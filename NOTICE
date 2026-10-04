@@ -1,0 +1,7 @@
+PartitionGuard
+Copyright 2026 PartitionGuard contributors
+
+Independently implemented Python data-product migration tooling.
+ODCS is maintained by Bitol; PartitionGuard supports a documented relational
+subset and does not claim endorsement or full standards conformance.
+Third-party dependencies retain their own licenses.

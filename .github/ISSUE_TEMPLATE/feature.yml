@@ -1,0 +1,26 @@
+name: Feature request
+description: Propose a concrete migration-safety improvement.
+title: '[Feature] '
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: User problem
+      description: Describe the real migration or recovery task and what is difficult today.
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Proposed behavior and safety boundaries
+      description: Include workload bounds, required evidence, and what should remain unsupported.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Existing tools or alternatives considered
+  - type: textarea
+    id: testing
+    attributes:
+      label: How could contributors test the behavior honestly?

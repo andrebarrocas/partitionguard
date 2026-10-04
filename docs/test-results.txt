@@ -1,0 +1,33 @@
+......................s.s............................................... [ 27%]
+........................................................................ [ 54%]
+........................................................................ [ 81%]
+...............................................s.                        [100%]
+================================ tests coverage ================================
+______________ coverage: platform darwin, python 3.11.14-final-0 _______________
+
+Name                                      Stmts   Miss  Cover   Missing
+-----------------------------------------------------------------------
+src/partitionguard/__init__.py                1      0   100%
+src/partitionguard/__main__.py                2      2     0%   1-3
+src/partitionguard/adapters/__init__.py      13      2    85%   12-14
+src/partitionguard/adapters/delta.py        260     38    85%   43, 46, 52, 77, 81-82, 105, 122, 151, 157, 168, 193, 199, 203, 227, 244, 246, 274, 281, 290, 300, 313-315, 329, 334, 337, 359-363, 367, 385, 391, 394-395, 399-401
+src/partitionguard/adapters/sql.py          166     10    94%   47, 58, 73, 96, 98, 127, 156, 238, 251, 262
+src/partitionguard/aws.py                    68      8    88%   18-24, 82, 103, 106, 152
+src/partitionguard/cli.py                   210     14    93%   71, 103, 141, 192, 289-291, 379, 383, 398, 409-411, 427, 464
+src/partitionguard/contracts.py             126     15    88%   36, 39, 50, 63, 68, 71, 74, 93, 96, 105, 177, 217, 233, 259, 262
+src/partitionguard/engine.py                171     16    91%   52, 54, 56, 65, 117-119, 163, 169, 171, 179, 187-194, 281, 365-366
+src/partitionguard/examples.py               25      0   100%
+src/partitionguard/ledger.py                180     18    90%   83-87, 108, 137, 140, 143, 169, 193, 196, 266, 302, 304, 338, 392, 401
+src/partitionguard/lineage.py                64      3    95%   22, 34, 51
+src/partitionguard/models.py                193     12    94%   112, 115, 117, 119, 131, 133, 164, 172-174, 235, 237
+src/partitionguard/planning.py              192     22    89%   130, 170, 185, 245-246, 251-252, 282, 284, 288, 364, 379, 386, 392-393, 395, 397, 401, 427, 430, 463, 480
+src/partitionguard/plugins.py                30      2    93%   41, 49
+src/partitionguard/verification.py          290     49    83%   17, 25, 46, 48, 53-55, 74, 76, 78, 90, 149, 169-174, 179-181, 210, 230-231, 246, 258, 274, 285, 355, 363, 369, 385-393, 411, 460-463, 470-471, 482-485, 507-508, 510
+-----------------------------------------------------------------------
+TOTAL                                      1991    211    89%
+Coverage JSON written to file ../../work/coverage-final.json
+=========================== short test summary info ============================
+SKIPPED [1] tests/test_adapters.py:139: PostgreSQL row security
+SKIPPED [1] tests/test_adapters.py:149: PostgreSQL rewrite rules
+SKIPPED [1] tests/test_verification.py:278: PostgreSQL function overload resolution
+262 passed, 3 skipped in 6.47s

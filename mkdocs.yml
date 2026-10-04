@@ -1,0 +1,14 @@
+site_name: PartitionGuard
+site_description: Safely plan, execute, recover, and verify changes to production data products.
+docs_dir: docs
+site_dir: site
+theme:
+  name: mkdocs
+  color_mode: auto
+  navigation_depth: 3
+markdown_extensions:
+  - tables
+  - fenced_code
+  - toc:
+      permalink: true
+strict: true

@@ -1,0 +1,30 @@
+{
+  "python": "3.11.14",
+  "platform": "Darwin",
+  "machine": "arm64",
+  "duckdb": "1.5.6",
+  "metric": "capture_baseline with tracemalloc enabled; warm local cache; three columns; one DATE partition",
+  "repeats": 3,
+  "results": [
+    {
+      "rows": 1000,
+      "seconds_median": 0.014676874969154596,
+      "seconds_runs": [
+        0.014964167028665543,
+        0.014676874969154596,
+        0.014408832998014987
+      ],
+      "peak_python_bytes_max": 226093
+    },
+    {
+      "rows": 10000,
+      "seconds_median": 0.12907949998043478,
+      "seconds_runs": [
+        0.14647858298849314,
+        0.12893891701241955,
+        0.12907949998043478
+      ],
+      "peak_python_bytes_max": 2752179
+    }
+  ]
+}
