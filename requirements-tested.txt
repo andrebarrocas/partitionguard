@@ -38,7 +38,7 @@ pytest-cov==7.1.0
 pytest==9.1.1
 python-dateutil==2.9.0.post0
 pyyaml_env_tag==1.1
-rich==14.3.4
+rich==15.0.0
 ruff==0.16.10
 s3transfer==0.19.2
 shellingham==1.5.4
