@@ -19,7 +19,7 @@ dependencies = ["pydantic>=2.10,<3", "PyYAML>=6,<7", "typer>=0.15,<1", "rich>=13
 aws = ["boto3>=1.35,<2"]
 duckdb = ["duckdb>=1.2,<2"]
 postgres = ["psycopg[binary]>=3.2,<4"]
-delta = ["deltalake>=1.6.6,<2", "pyarrow>=23,<24", "duckdb>=1.2,<2"]
+delta = ["deltalake>=1.6.6,<2", "pyarrow>=23,<27", "duckdb>=1.2,<2"]
 dev = ["pytest>=8,<10", "hypothesis>=6,<7", "pytest-cov>=6,<8", "ruff>=0.11", "build>=1", "mkdocs>=1.6,<2"]
 
 [project.scripts]
