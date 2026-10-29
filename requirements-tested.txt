@@ -62,7 +62,7 @@ s3transfer==0.19.3
 shellingham==1.5.4
 six==1.17.0
 sortedcontainers==2.4.0
-sqlglot==29.0.1
+sqlglot==30.24.0
 tomlkit==0.15.2
 trove-classifiers==2026.9.21.13
 twine==6.2.0
