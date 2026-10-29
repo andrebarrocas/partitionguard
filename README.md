@@ -2,15 +2,52 @@
 
 **Safely plan, execute, recover, and verify changes to production data products.**
 
+[![CI](https://github.com/andrebarrocas/partitionguard/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/andrebarrocas/partitionguard/actions/workflows/ci.yml)
+
+Created and maintained by [André Barrocas](https://github.com/andrebarrocas) as a
+personal data engineering project. Read the [engineering walkthrough](docs/project-showcase.md)
+for the problem, design decisions, and executable evidence.
+
 PartitionGuard is a Python CLI for engineers changing existing datasets. It turns
 an ODCS contract change and a bounded migration recipe into a reviewable plan,
 requires approval of that exact plan, records each committed partition, and
 verifies the result before marking the stage complete.
 
-**0.1.0 is an early, locally tested release candidate.** The repository includes
-installable distributions and publishing workflows; no public PyPI or GitHub
-release is claimed. The original working name was DataGuard; see the
+**0.1.0 is an early release candidate with public source and automated checks.**
+The repository includes installable distributions and publishing workflows;
+a PyPI package or tagged release has not been published. The original working name was DataGuard; see the
 [name availability review](docs/name-review.md).
+
+## See failure, recovery, and verification in one command
+
+From a checkout, install the DuckDB extra and run:
+
+```sh
+python -m pip install -e '.[duckdb]'
+python examples/showcase.py
+```
+
+Actual output from the synthetic demo:
+
+```text
+PartitionGuard — executable recovery and verification demo
+Scope: 6/8 rows in 3 date partitions
+Dry run: PREPARED (schema unchanged)
+Unapproved execution and wrong plan approval: BLOCKED (exit 6)
+Injected failure: FAILED after 2 committed rows
+Resume: COMPLETE with 4 checkpoints
+Verification: 24 checks passed
+Corruption detected: VERIFICATION_FAILED (exit 5)
+Repair and reverify: COMPLETE
+Source preserved; 2 outside rows untouched
+Audit: 36 durable events, integrity checked on read
+```
+
+The demo invokes the public CLI, deliberately interrupts a disposable migration,
+resumes it, corrupts a migrated value, and verifies that completion is revoked
+before repairing it. Every displayed outcome is checked against the real data
+or ledger; an unexpected result exits with an error. It uses a temporary database
+and leaves no dataset behind. Run with `--json` for machine-readable evidence.
 
 ## What you can do today
 
@@ -151,8 +188,9 @@ never posts to a pull request automatically.
 7. [Run checks in GitHub Actions](docs/tutorials/07-github-actions.md)
 
 Regenerate all seven with `python examples/run_tutorials.py`. Transcripts are
-recorded from execution; JSON excerpts are labelled. The GitHub Actions YAML is
-provided and locally linted, not claimed to have run on a remote repository.
+recorded from execution; JSON excerpts are labelled. CI also executes the demo
+and regenerates the tutorials. Each Python job uploads test results and coverage;
+the Python 3.12 job additionally uploads the observed demo output.
 
 ## Contribute and evaluate
 
@@ -178,5 +216,5 @@ problems. This tool focuses on reviewed migration procedures for datasets owned
 outside a transformation framework. It includes no AI safety decisions, custom
 Rust component, scheduler, generic catalog, or vendor lock-in.
 
-Licensed under Apache-2.0. Real-user validation and a public release remain next
-steps; passing local tests is not evidence of production-scale maturity.
+Licensed under Apache-2.0. Real-user validation and a tagged package release remain
+next steps; passing automated tests is not evidence of production-scale maturity.

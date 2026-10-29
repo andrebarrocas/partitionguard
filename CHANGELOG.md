@@ -2,6 +2,23 @@
 
 Changes follow semantic versioning. This file records implemented behavior; roadmap entries are not released features.
 
+## Unreleased — project verification and presentation
+
+### Fixed
+
+- Pin wheel and source core metadata to version 2.4 so current Hatchling builds
+  remain compatible with the Twine 6 validation used in CI and release checks.
+  The prior remote test jobs passed, but package validation rejected metadata 2.5.
+
+### Added
+
+- A public-CLI demonstration that checks approval gates, bounded execution,
+  persisted recovery, corruption detection, repair, and source preservation.
+- CI execution of that demonstration and all seven tutorials, with JUnit,
+  coverage and machine-readable demo evidence uploaded as artifacts.
+- Explicit André Barrocas author/maintainer metadata, repository links, a live
+  CI badge, and an engineering walkthrough for the personal project page.
+
 ## 0.1.0 — unreleased candidate
 
 ### Added
@@ -24,4 +41,7 @@ Changes follow semantic versioning. This file records implemented behavior; road
 
 ### Release status
 
-The package and workflows are prepared for maintainers. No public repository, package publication, production deployment, user adoption, or hosted documentation is implied. See [candidate release notes](docs/releases/0.1.0.md) for acceptance and remaining work.
+Source is public at [andrebarrocas/partitionguard](https://github.com/andrebarrocas/partitionguard).
+A tagged package release, production deployment, user adoption and hosted
+documentation are separate milestones. See [candidate release notes](docs/releases/0.1.0.md)
+for acceptance and remaining work.

@@ -1,4 +1,4 @@
-.PHONY: test lint docs build tutorials
+.PHONY: test lint docs build tutorials showcase
 
 test:
 	python -m pytest
@@ -11,3 +11,5 @@ build:
 	python -m build
 tutorials:
 	python examples/run_tutorials.py
+showcase:
+	python examples/showcase.py

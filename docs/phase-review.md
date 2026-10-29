@@ -11,7 +11,7 @@ This review distinguishes executable candidate features from remaining product r
 | 2: impact and risk | Explicit dependency traversal; cycles; direct/transitive impact; model/check/SLA categories; deterministic risk reasons. | Graph property tests; unchanged/metadata-only contracts do not invent affected consumers. Both old/new declared edges are retained for material changes. Declared lineage is not proof of complete consumer coverage. |
 | 3: plans and ledger | Content-addressed typed plans; half-open date bounds and row caps; explicit approval; SQLite events/checkpoints; integrity checking. | Plan tampering, bound validation, ledger reopen/locking/hash-chain tests. Physical connection identity and source/runtime evidence bind at dry-run preparation rather than appearing as credentials in the plan. |
 | 4: execute/recover/verify | Real DuckDB and PostgreSQL additive migrations; one action per transaction; persisted failures; resumed checkpoint reconciliation; required verification. | Engine, adapter, and verification tests include real PostgreSQL, failed casts, source drift with unchanged counts, commit/checkpoint crash gaps, result corruption, and failing policy. Quiescent writers remain mandatory. |
-| 5: release engineering | Python package and CLI; contributor/security/license material; GitHub Actions configuration; documentation and seven runnable tutorials; release automation. | Local package/docs/tutorial verification and candidate release notes. Public repository ownership, remote CI runs, package publication, hosted documentation, and real user adoption are not established by files in this repository. |
+| 5: release engineering | Python package and CLI; contributor/security/license material; GitHub Actions configuration; documentation, seven runnable tutorials and a recovery demonstration; release automation. | Source is public under André Barrocas's account. Dated local results and links to remote CI are in the validation record. Package publication, hosted documentation and user adoption remain separate milestones. |
 | 6: ecosystem depth | Local Delta Lake adapter with physical DATE partition scope, native atomic actions, version evidence, historical reads, conflict detection, and engine recovery. | Real Delta integration tests cover bounded writes and recovery. Remote object stores and multi-action rollback are unsupported. |
 
 Full-suite results, tested runtime versions, package/document build results, and any skips belong in the final validation report. A skipped engine-specific test on a different backend is not a passed test for that backend. CI configuration is not evidence that GitHub Actions has run.
@@ -45,4 +45,8 @@ The optional OpenLineage importer consumes offline events. DataHub and OpenMetad
 
 Keep the small typed operation set, single-controller ledger, fixed copy/cast semantics, and adapter boundaries. Do not grow a workflow language or orchestrator to conceal unsupported consumer cutover. No dead compatibility shims or empty success stubs should be counted as features.
 
-The result is an unpublished open-source release candidate with tested local behavior. The next adoption gate is an external engineer using the documented bounded procedure on a noncritical replica, followed by feedback and review. Publication, production operations, and adoption are separate, observable milestones.
+The result is a public-source release candidate by André Barrocas, with a runnable
+recovery demonstration and automated checks. A tagged package release remains
+pending. The next adoption gate is an external engineer using the documented
+bounded procedure on a noncritical replica, followed by feedback and review.
+Package publication, production operations and adoption are separate milestones.
