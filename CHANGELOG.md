@@ -2,6 +2,28 @@
 
 Changes follow semantic versioning. This file records implemented behavior; roadmap entries are not released features.
 
+## Unreleased
+
+### Fixed
+
+- Select core metadata 2.4 for both distributions so the build remains compatible
+  with the Twine 6 publication validator. The previous CI failure rejected
+  metadata 2.5; strict validation remains enabled.
+
+### Added
+
+- Distribution regression tests that build and validate the actual wheel and
+  source archive, including the CLI entry point, license and shipped engine.
+- CLI regression tests for recovery after a failed partition and refusal to
+  execute a changed plan using an earlier approval.
+- JUnit and coverage artifacts in CI, execution of all seven tutorials, and a
+  live CI badge for reviewing the current branch's results.
+
+### Changed
+
+- Replace the README heading with "Supported capabilities" and refresh the
+  verification guidance for presenting reproducible results.
+
 ## 0.1.0 — unreleased candidate
 
 ### Added

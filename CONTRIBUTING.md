@@ -14,6 +14,7 @@ python -m pytest
 python -m ruff check .
 python -m ruff format --check src tests examples benchmarks
 python -m build
+python -m twine check --strict dist/*
 python -m mkdocs build --strict
 ```
 
@@ -27,6 +28,12 @@ docker stop partitionguard-postgres
 ```
 
 Use only a disposable test database. Tests create and remove temporary tables. CI configures PostgreSQL 16 and Python 3.11, 3.12, and 3.13; its results must actually run before claiming that matrix passed.
+
+Distribution tests build a wheel and source archive using the build backend in
+the development extra, then run the publication validator on both. These tests
+also check the CLI entry point, license, shipped engine files, and exclusion of
+generated databases and caches. Install the complete development extra before
+running them; they do not install packages or contact a package registry.
 
 ## Change expectations
 

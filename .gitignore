@@ -8,6 +8,7 @@ venv/
 .ruff_cache/
 .coverage
 coverage.xml
+test-results.xml
 htmlcov/
 build/
 dist/

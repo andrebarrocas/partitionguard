@@ -69,13 +69,13 @@ jobs:
           if not pathlib.Path(f'docs/releases/{version}.md').is_file():
               raise SystemExit('Checked-in release notes are required')
           PY
-      - run: python -m pip install -e '.[dev,duckdb,postgres,delta,aws]' 'twine>=6,<7'
+      - run: python -m pip install -e '.[dev,duckdb,postgres,delta,aws]'
       - run: python -m ruff check .
       - run: python -m ruff format --check src tests examples benchmarks
       - run: python -m pytest
       - run: python -m mkdocs build --strict
       - run: python -m build
-      - run: python -m twine check dist/*
+      - run: python -m twine check --strict dist/*
       - name: Install and exercise the built wheel
         run: |
           python -m venv "$RUNNER_TEMP/partitionguard-wheel"

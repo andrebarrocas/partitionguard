@@ -124,6 +124,71 @@ def test_resume_without_execute_and_missing_connection(demo, monkeypatch):
     invoke(["migrate", p], 2)
 
 
+def test_cli_recovers_a_failed_partition_from_the_persisted_ledger(demo, monkeypatch):
+    from partitionguard.adapters.sql import DuckDBAdapter
+
+    folder, db = demo
+    p, digest = make_plan(folder)
+    args = [p, "--connection", db, "--ledger", folder / "ledger.sqlite", "--json"]
+    execution = ["--execute", "--operator", "test", "--maintenance-window"]
+    invoke(["migrate", *args])
+    invoke(["approve", *args, "--digest", digest, "--operator", "test"])
+    original = DuckDBAdapter.backfill
+
+    def fail_on_second_partition(self, table, operation, bounds, partition):
+        if partition == "2026-01-02":
+            raise RuntimeError("Synthetic interruption of the second partition")
+        return original(self, table, operation, bounds, partition)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(DuckDBAdapter, "backfill", fail_on_second_partition)
+        invoke(["migrate", *args, *execution], 4)
+    with duckdb.connect(str(db), read_only=True) as connection:
+        assert connection.execute(
+            "SELECT carrier_code_v2 FROM shipment_events ORDER BY event_id"
+        ).fetchall() == [(1,), (2,), (None,), (None,), (None,), (None,)]
+    state = json.loads(invoke(["status", p, "--ledger", folder / "ledger.sqlite", "--json"]).stdout)
+    assert state["status"] == "FAILED"
+    assert len(state["checkpoints"]) == 2
+    invoke(["migrate", *args, *execution], 6)
+    recovered = json.loads(invoke(["migrate", *args, *execution, "--resume"]).stdout)
+    assert recovered["status"] == "COMPLETE"
+    assert recovered["verification"]["passed"] is True
+    assert recovered["checkpoints"] == 4
+    with duckdb.connect(str(db), read_only=True) as connection:
+        assert connection.execute(
+            "SELECT carrier_code, carrier_code_v2 FROM shipment_events ORDER BY event_id"
+        ).fetchall() == [(str(i), i) for i in range(1, 7)]
+    events = json.loads(
+        invoke(["history", "--ledger", folder / "ledger.sqlite", "--plan-file", p, "--json"]).stdout
+    )
+    assert any(event["kind"] == "EXECUTION_FAILED" for event in events)
+    assert any(
+        event["kind"] == "ACTION_RECONCILED"
+        and event["detail"]["action_id"] == "backfill:carrier_code_v2:2026-01-01"
+        for event in events
+    )
+
+
+def test_changed_plan_cannot_use_a_previous_cli_approval(demo):
+    folder, db = demo
+    p, digest = make_plan(folder)
+    args = [p, "--connection", db, "--ledger", folder / "ledger.sqlite", "--json"]
+    invoke(["migrate", *args])
+    invoke(["approve", *args, "--digest", digest, "--operator", "test"])
+    document = json.loads(p.read_text())
+    document["plan"]["migration"]["bounds"]["end"] = "2026-01-03"
+    p.write_text(json.dumps(document))
+    result = invoke(
+        ["migrate", *args, "--execute", "--operator", "test", "--maintenance-window"], 2
+    )
+    assert "digest mismatch" in result.output.lower()
+    with duckdb.connect(str(db), read_only=True) as connection:
+        assert "carrier_code_v2" not in {
+            row[0] for row in connection.execute("DESCRIBE shipment_events").fetchall()
+        }
+
+
 def test_contract_plugin_selected_explicitly(demo, monkeypatch):
     from partitionguard import plugins
     from partitionguard.contracts import load_contract
