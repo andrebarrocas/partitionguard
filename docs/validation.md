@@ -1,15 +1,15 @@
 # Validation record
 
-Recorded 2026-10-31 for the public-source 0.1.0 candidate. Results below were
-observed locally in a fresh environment. For remote results on the revision
+Recorded 2026-11-05 for the public-source 0.1.0 candidate. Results below were
+observed locally using the development environment created on 2026-10-31. For remote results on the revision
 being reviewed, inspect the
 [CI workflow](https://github.com/andrebarrocas/partitionguard/actions/workflows/ci.yml?query=branch%3Amain).
 Its `test-results-python-*` artifacts contain JUnit test results and coverage.
 
 ## Complete suite
 
-**268 passed, 3 skipped in 50.42 seconds.** Statement coverage is
-**89.4%** (1780 of 1991 statements).
+**280 passed, 3 skipped in 19.65 seconds.** Statement coverage is
+**89.7%** (1837 of 2049 statements).
 This is statement coverage, not a claim of exhaustive behavior coverage.
 The original [2026-10-04 raw test report](test-results.txt) is retained as an
 archive. Current machine-readable reports are uploaded by CI for each revision.
@@ -49,7 +49,15 @@ single tested local environment.
 
 ## Additional checks performed
 
-- Six new regression cases pass: strict wheel/source publication validation,
+- Twelve new regression cases cover three real SIGKILL crash windows and nine
+  evidence-report cases (including parameterized CLI cases). Reopened stores and
+  a fresh public CLI verify recovery without Python cleanup. These are DuckDB
+  process-crash tests, not power-loss or PostgreSQL server-restart tests.
+- The executable evidence demonstration completed SIGKILL recovery, deliberate
+  corruption detection, repair and three filtered HTML/JSON snapshots. CI runs
+  it on Python 3.12 and publishes `migration-evidence` artifacts. See
+  [evidence reports](evidence-reports.md) for actual output and evidence boundaries.
+- Six earlier regression cases still pass: strict wheel/source publication validation,
   wheel entry point/license/engine integrity, source archive contents, persisted
   CLI recovery, and refusal to execute a changed previously approved plan.
 - Ruff checks and formatting checks pass across source, tests, examples and benchmarks.
@@ -59,10 +67,12 @@ single tested local environment.
 - Wheel/source builds and wheel metadata inspection pass. An isolated core-only
   wheel environment runs help/version, init, validate, diff, impact, plugin discovery,
   and both passing/failing CI plans without DuckDB, PostgreSQL, Delta or AWS SDKs.
+- The newly built wheel also exports HTML evidence from an existing ledger in
+  that core-only environment without any database SDK installed.
 - The benchmark script ran on synthetic 1,000/10,000-row tables. Raw results and
   methodology are in `benchmarks/`; no production throughput or Rust speedup is claimed.
 
-## Package-validation failure and regression coverage
+## Earlier package-validation failure and regression coverage
 
 The failing CI quality job rejected the distributions' core metadata version
 2.5. Both new publication-validation cases reproduced that failure before the
@@ -75,6 +85,10 @@ tests run after the documented development installation. Distribution tests
 build actual artifacts without installing packages or accessing a registry,
 then inspect their metadata, license, CLI entry point, shipped engine and
 exclusion of generated data.
+
+The earlier 2026-10-31 full-suite result was 268 passed, 3 skipped, with 89.4%
+statement coverage. The current result includes the additional crash/report tests;
+timings are individual observations, not performance comparisons.
 
 ## Safety regressions exercised
 

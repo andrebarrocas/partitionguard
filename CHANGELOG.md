@@ -12,6 +12,14 @@ Changes follow semantic versioning. This file records implemented behavior; road
 
 ### Added
 
+- Portable HTML/JSON migration evidence snapshots with ledger integrity checks,
+  filtered timeline/checkpoint/verification evidence, escaped self-contained HTML,
+  explicit evidence boundaries and refusal to overwrite existing files.
+- Three real SIGKILL integration cases covering an open transaction, the
+  commit/checkpoint gap, and a durable checkpoint, followed by fresh-CLI recovery.
+- An executable crash/recovery/corruption/repair demonstration and downloadable
+  CI evidence artifacts. Report regressions cover lifecycle accuracy, filtering,
+  HTML injection, corrupted ledgers, and safe CLI file handling.
 - Distribution regression tests that build and validate the actual wheel and
   source archive, including the CLI entry point, license and shipped engine.
 - CLI regression tests for recovery after a failed partition and refusal to

@@ -49,7 +49,8 @@ Prefer Delta Lake via delta-rs for local, reproducible table/version inspection 
 - Optional lineage ingestion from OpenLineage/DataHub/OpenMetadata.
 - AWS subsets chosen by executable user need and available integration environments.
 - An explicit online writer/consumer cutover protocol, only with concurrency evidence.
-- Tamper-evident external evidence export and authenticated approvals.
+- Signed/external evidence storage and authenticated approvals. Filtered unsigned
+  HTML/JSON snapshots are implemented; see [evidence reports](evidence-reports.md).
 - More partition representations and a remote execution backend if users need them.
 - Profile actual bottlenecks before considering Rust; compare reproducible implementations and publish measurements.
 - Optional AI explanation may read deterministic results but never decide, approve, or execute safety-critical changes.

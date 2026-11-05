@@ -91,6 +91,35 @@ silently. Successful earlier partitions remain committed; this is at-least-once
 replay of idempotent assignments, not cross-system exactly-once execution or
 automatic rollback. See [recovery tutorial](docs/tutorials/04-recovery.md).
 
+## Share migration evidence
+
+Export a recorded run without a database connection:
+
+```sh
+partitionguard report plan.json --ledger tutorial-ledger.sqlite \
+  --output migration-report.html
+partitionguard report plan.json --ledger tutorial-ledger.sqlite \
+  --format json --output migration-report.json
+```
+
+The report contains approval, scope, timeline, recovered actions, checkpoints and
+recorded verification results. It checks local ledger integrity and filters out
+connection identities, raw errors, SQL, source values and check observations.
+It is an unsigned snapshot, not a fresh verification or authenticated audit.
+Existing output files are never overwritten.
+
+Run the reproducible process-crash demonstration:
+
+```sh
+python examples/recovery_report.py --output /tmp/partitionguard-evidence
+```
+
+The output directory must be new. On POSIX, the demonstration kills a worker
+after a real target commit, resumes in a fresh CLI process, detects deliberate
+corruption, repairs it through explicit resume, and exports three HTML/JSON
+snapshots. CI publishes these as the `migration-evidence` artifact.
+See [evidence reports](docs/evidence-reports.md) for actual output and boundaries.
+
 ## Adapter support
 
 | Adapter | Implemented scope | Validation in this checkout |
@@ -144,19 +173,21 @@ never posts to a pull request automatically.
 
 ## Verification results
 
-Local verification on **2026-10-31**, in a fresh environment with PostgreSQL enabled:
+Local verification on **2026-11-05**, with PostgreSQL enabled:
 
 | Check | Result |
 | --- | --- |
-| Complete test suite | 268 passed, 3 backend-specific skips |
-| Statement coverage | 89.4% |
+| Complete test suite | 280 passed, 3 backend-specific skips |
+| Statement coverage | 89.7% |
 | Documented tutorials | All 7 executed successfully |
+| Crash/recovery/report demonstration | SIGKILL, fresh-process recovery, corruption detection and repair passed |
 | Wheel and source distribution | Build and strict publication validation passed |
 | Code quality and documentation | Lint, formatting and strict documentation build passed |
 
-Six new regression cases cover the package-validation failure, the shipped CLI
-and engine, source-archive hygiene, persisted CLI recovery after a failed
-partition, and rejection of a changed plan after approval.
+Twelve new regression cases cover real process termination at three crash
+boundaries, report lifecycle accuracy, sensitive-field filtering, HTML injection,
+corrupted ledgers and safe CLI export. Earlier package, approval and recovery
+regressions remain in the complete suite.
 
 The [validation record](docs/validation.md) includes the tested versions, scope
 and reproduction commands. For the commit being reviewed, inspect the

@@ -402,6 +402,34 @@ def history(
         )
 
 
+@app.command()
+@guarded
+def report(
+    plan_file: Path,
+    destination: Annotated[Path, typer.Option("--output")],
+    format: str = "html",
+    ledger: Path = Path(".partitionguard/ledger.sqlite"),
+):
+    """Export filtered recorded evidence as HTML or JSON; never connect to the dataset."""
+    from .ledger import Ledger
+    from .reporting import build_report, render_html
+
+    if format not in {"html", "json"}:
+        raise ValueError("Report format must be html or json")
+    if not ledger.is_file():
+        raise ValueError("Ledger does not exist")
+    if destination.exists():
+        raise ValueError("Report output already exists; choose a new path")
+    p = load_plan(plan_file)
+    with Ledger(ledger) as journal:
+        evidence = build_report(p, journal)
+    content = render_html(evidence) if format == "html" else canonical_json(evidence) + "\n"
+    # Exclusive creation also protects plan/ledger files and concurrent exporters.
+    with destination.open("x", encoding="utf-8") as stream:
+        stream.write(content)
+    typer.echo(f"Exported {format} evidence snapshot to {destination}")
+
+
 @app.command("plugins")
 @guarded
 def plugins_list():
