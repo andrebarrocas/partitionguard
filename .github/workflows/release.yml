@@ -41,7 +41,7 @@ jobs:
       PARTITIONGUARD_TEST_POSTGRES: postgresql://postgres:partitionguard@localhost:5432/partitionguard_test
       PG_RELEASE_VERSION: ${{ inputs.version }}
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -116,7 +116,7 @@ jobs:
       GH_REPO: ${{ github.repository }}
       PG_RELEASE_VERSION: ${{ inputs.version }}
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
