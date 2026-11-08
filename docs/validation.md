@@ -1,6 +1,6 @@
 # Validation record
 
-Recorded 2026-11-05 for the public-source 0.1.0 candidate. Results below were
+Recorded 2026-11-08 for the public-source 0.1.0 candidate. Results below were
 observed locally using the development environment created on 2026-10-31. For remote results on the revision
 being reviewed, inspect the
 [CI workflow](https://github.com/andrebarrocas/partitionguard/actions/workflows/ci.yml?query=branch%3Amain).
@@ -8,8 +8,8 @@ Its `test-results-python-*` artifacts contain JUnit test results and coverage.
 
 ## Complete suite
 
-**280 passed, 3 skipped in 19.65 seconds.** Statement coverage is
-**89.7%** (1837 of 2049 statements).
+**293 passed, 3 skipped in 25.88 seconds.** Statement coverage is
+**89.7%** (1849 of 2061 statements).
 This is statement coverage, not a claim of exhaustive behavior coverage.
 The original [2026-10-04 raw test report](test-results.txt) is retained as an
 archive. Current machine-readable reports are uploaded by CI for each revision.
@@ -49,6 +49,9 @@ single tested local environment.
 
 ## Additional checks performed
 
+- Thirteen infrastructure regressions pass against an owned PostgreSQL server
+  and real SQLite quota/write-denied conditions, including an acknowledged-by-server
+  COMMIT whose reply is deliberately dropped. See [operation boundaries](production-operations.md).
 - Twelve new regression cases cover three real SIGKILL crash windows and nine
   evidence-report cases (including parameterized CLI cases). Reopened stores and
   a fresh public CLI verify recovery without Python cleanup. These are DuckDB

@@ -1,5 +1,6 @@
 """Subprocess-only crash barriers; no failure injection is exposed in the CLI."""
 
+import json
 import sys
 import threading
 from pathlib import Path
@@ -15,10 +16,12 @@ def main():
     plan = load_plan(Path(plan_file))
 
     def stop():
-        Path(marker).write_text("ready", encoding="utf-8")
-        threading.Event().wait()  # Parent sends SIGKILL; no Python cleanup can run.
+        pid = adapter._connection.info.backend_pid if plan.adapter == "postgres" else None
+        Path(marker).write_text(json.dumps({"backend_pid": pid}), encoding="utf-8")
+        while not Path(marker + ".continue").exists():
+            threading.Event().wait(0.02)
 
-    with open_adapter("duckdb", database, read_only=False) as adapter:
+    with open_adapter(plan.adapter, database, read_only=False) as adapter:
         with Ledger(ledger_file) as ledger:
             checkpoint = ledger.checkpoint
             backfill = adapter.backfill

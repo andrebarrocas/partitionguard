@@ -173,18 +173,21 @@ never posts to a pull request automatically.
 
 ## Verification results
 
-Local verification on **2026-11-05**, with PostgreSQL enabled:
+Local verification on **2026-11-08**, with PostgreSQL enabled:
 
 | Check | Result |
 | --- | --- |
-| Complete test suite | 280 passed, 3 backend-specific skips |
+| Complete test suite | 293 passed, 3 backend-specific skips |
 | Statement coverage | 89.7% |
 | Documented tutorials | All 7 executed successfully |
 | Crash/recovery/report demonstration | SIGKILL, fresh-process recovery, corruption detection and repair passed |
 | Wheel and source distribution | Build and strict publication validation passed |
 | Code quality and documentation | Lint, formatting and strict documentation build passed |
 
-Twelve new regression cases cover real process termination at three crash
+Thirteen infrastructure cases cover PostgreSQL client/session loss, server
+restarts, a lost commit acknowledgement and ledger storage errors. See
+[production operation boundaries](docs/production-operations.md).
+Twelve earlier regression cases cover real process termination at three crash
 boundaries, report lifecycle accuracy, sensitive-field filtering, HTML injection,
 corrupted ledgers and safe CLI export. Earlier package, approval and recovery
 regressions remain in the complete suite.

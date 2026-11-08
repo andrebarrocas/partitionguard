@@ -332,27 +332,36 @@ class Engine:
                     if isinstance(exc, EngineError)
                     else "Adapter or ledger operation failed; inspect the local exception without publishing credentials or source rows"
                 )
-                current = self.ledger.get(plan.id)
-                if current and current["status"] != "VERIFICATION_FAILED":
-                    status = (
-                        "VERIFICATION_FAILED" if isinstance(exc, VerificationFailed) else "FAILED"
-                    )
-                    self.ledger.transition(
+                try:
+                    current = self.ledger.get(plan.id)
+                    if current and current["status"] != "VERIFICATION_FAILED":
+                        status = (
+                            "VERIFICATION_FAILED"
+                            if isinstance(exc, VerificationFailed)
+                            else "FAILED"
+                        )
+                        self.ledger.transition(
+                            plan.id,
+                            status,
+                            operator=operator,
+                            error=f"{type(exc).__name__}: {safe_error}",
+                        )
+                    self.ledger.record_event(
                         plan.id,
-                        status,
-                        operator=operator,
-                        error=f"{type(exc).__name__}: {safe_error}",
+                        "EXECUTION_FAILED",
+                        {
+                            "error_type": type(exc).__name__,
+                            "error": safe_error,
+                            "duration_seconds": time.monotonic() - started,
+                            "recovery": "Inspect failure, restore quiescent source, then resume the same approved plan. Do not replace its baseline.",
+                        },
                     )
-                self.ledger.record_event(
-                    plan.id,
-                    "EXECUTION_FAILED",
-                    {
-                        "error_type": type(exc).__name__,
-                        "error": safe_error,
-                        "duration_seconds": time.monotonic() - started,
-                        "recovery": "Inspect failure, restore quiescent source, then resume the same approved plan. Do not replace its baseline.",
-                    },
-                )
+                except Exception:
+                    raise EngineError(
+                        "Execution interrupted and failure evidence could not be persisted. "
+                        "Ledger status may be stale. Restore ledger access, inspect committed "
+                        "target state, then explicitly resume the same approved plan."
+                    ) from None
                 raise
 
     def verify(self, plan: Plan) -> dict:

@@ -14,6 +14,9 @@ DuckDB and PostgreSQL adapters establish the relational path. The [Delta adapter
 
 ## Review and contribution
 
+Read [production operation boundaries](production-operations.md) before handling
+lost connections, uncertain commit outcomes or unavailable ledger storage.
+
 Use [migration evidence reports](evidence-reports.md) to export a locally checked
 execution timeline as HTML or JSON. Its runnable demonstration shows real
 process termination, fresh-process recovery, corruption detection and repair.

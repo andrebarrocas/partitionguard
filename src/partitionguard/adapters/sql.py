@@ -63,7 +63,13 @@ class SQLAdapter:
                 yield self
                 self._connection.execute("COMMIT")
             except BaseException:
-                self._connection.execute("ROLLBACK")
+                # A lost COMMIT response has an unknown outcome. Rollback may
+                # also fail on a dead connection; preserve the original error
+                # and let explicit recovery reconcile committed target state.
+                try:
+                    self._connection.execute("ROLLBACK")
+                except Exception:
+                    pass
                 raise
         finally:
             self._in_transaction = False
@@ -268,5 +274,11 @@ class PostgresAdapter(SQLAdapter):
             raise RuntimeError("Another migration holds the PostgreSQL target lock")
         try:
             yield
-        finally:
+        except BaseException:
+            try:
+                self._connection.execute("SELECT pg_advisory_unlock(%s)", (key,))
+            except Exception:
+                pass  # Session loss releases the lock; preserve the operation failure.
+            raise
+        else:
             self._connection.execute("SELECT pg_advisory_unlock(%s)", (key,))

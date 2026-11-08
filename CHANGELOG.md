@@ -6,12 +6,18 @@ Changes follow semantic versioning. This file records implemented behavior; road
 
 ### Fixed
 
+- Preserve original connection failures when rollback or advisory-lock cleanup
+  also fails; stop with explicit recovery guidance if failure evidence cannot be
+  persisted to an unavailable ledger.
 - Select core metadata 2.4 for both distributions so the build remains compatible
   with the Twine 6 publication validator. The previous CI failure rejected
   metadata 2.5; strict validation remains enabled.
 
 ### Added
 
+- Infrastructure recovery coverage for real PostgreSQL client/session loss,
+  owned-server restarts, a dropped COMMIT acknowledgement, and SQLite disk-full,
+  write-denied and permission failures. CI requires disposable server binaries.
 - Portable HTML/JSON migration evidence snapshots with ledger integrity checks,
   filtered timeline/checkpoint/verification evidence, escaped self-contained HTML,
   explicit evidence boundaries and refusal to overwrite existing files.
