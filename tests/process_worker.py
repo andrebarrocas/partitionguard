@@ -42,7 +42,16 @@ def main():
 
             ledger.checkpoint = checkpoint_barrier
             adapter.backfill = transaction_barrier
-            Engine(adapter, ledger).apply(plan, "crash-test", maintenance_window=True)
+            engine = Engine(adapter, ledger)
+            if barrier == "lock":
+                original = engine._source_unchanged
+
+                def locked_source(*args):
+                    stop()
+                    return original(*args)
+
+                engine._source_unchanged = locked_source
+            engine.apply(plan, "crash-test", maintenance_window=True)
 
 
 if __name__ == "__main__":

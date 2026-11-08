@@ -177,13 +177,15 @@ Local verification on **2026-11-08**, with PostgreSQL enabled:
 
 | Check | Result |
 | --- | --- |
-| Complete test suite | 293 passed, 3 backend-specific skips |
-| Statement coverage | 89.7% |
+| Complete test suite | 302 passed, 3 backend-specific skips |
+| Statement coverage | 89.8% |
 | Documented tutorials | All 7 executed successfully |
 | Crash/recovery/report demonstration | SIGKILL, fresh-process recovery, corruption detection and repair passed |
 | Wheel and source distribution | Build and strict publication validation passed |
 | Code quality and documentation | Lint, formatting and strict documentation build passed |
 
+Nine concurrency cases cover separate controllers/ledgers, process/session lock
+release, and unexpected source writers across PostgreSQL, DuckDB and Delta.
 Thirteen infrastructure cases cover PostgreSQL client/session loss, server
 restarts, a lost commit acknowledgement and ledger storage errors. See
 [production operation boundaries](docs/production-operations.md).

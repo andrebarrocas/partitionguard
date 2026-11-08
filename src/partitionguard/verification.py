@@ -64,6 +64,23 @@ def _fingerprint(rows):
     return hasher.hexdigest()
 
 
+def capture_source_partition(adapter, plan, partition):
+    """Read original columns only, preserving the baseline's multiset semantics."""
+    bounds = _migration(plan).bounds
+    columns = ", ".join(quote(name) for name in sorted(plan.current.column_map))
+    scope, params = _scope(adapter, plan, partition)
+    rows = adapter.fetch(
+        f"SELECT {columns} FROM {quote(plan.current.table)} WHERE {scope} "
+        f"LIMIT {bounds.max_rows_per_partition + 1}",
+        params,
+    )
+    if len(rows) > bounds.max_rows_per_partition:
+        raise ValueError(f"Partition {partition} exceeds its row cap")
+    if plan.migration.require_nonempty and not rows:
+        raise ValueError(f"Required partition {partition} is empty")
+    return {"row_count": len(rows), "fingerprint": _fingerprint(rows)}
+
+
 def capture_baseline(adapter, plan):
     migration = _migration(plan)
     bounds = migration.bounds
@@ -76,24 +93,14 @@ def capture_baseline(adapter, plan):
         raise ValueError("Live table contains columns absent from both approved contracts")
     if actual.get(bounds.column) != "DATE":
         raise ValueError("Initial bounded execution requires a DATE partition column")
-    columns = ", ".join(quote(name) for name in sorted(original))
     partitions = {}
     total = 0
     for partition in bounds.partitions():
-        scope, params = _scope(adapter, plan, partition)
-        rows = adapter.fetch(
-            f"SELECT {columns} FROM {quote(plan.current.table)} WHERE {scope} "
-            f"LIMIT {bounds.max_rows_per_partition + 1}",
-            params,
-        )
-        if len(rows) > bounds.max_rows_per_partition:
-            raise ValueError(f"Partition {partition} exceeds its row cap")
-        if migration.require_nonempty and not rows:
-            raise ValueError(f"Required partition {partition} is empty")
-        total += len(rows)
+        evidence = capture_source_partition(adapter, plan, partition)
+        total += evidence["row_count"]
         if total > bounds.max_total_rows:
             raise ValueError("Bounded dataset exceeds the approved total row cap")
-        partitions[partition] = {"row_count": len(rows), "fingerprint": _fingerprint(rows)}
+        partitions[partition] = evidence
     from partitionguard import __version__
 
     dependencies = {

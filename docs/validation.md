@@ -8,8 +8,8 @@ Its `test-results-python-*` artifacts contain JUnit test results and coverage.
 
 ## Complete suite
 
-**293 passed, 3 skipped in 25.88 seconds.** Statement coverage is
-**89.7%** (1849 of 2061 statements).
+**302 passed, 3 skipped in 30.49 seconds.** Statement coverage is
+**89.8%** (1856 of 2067 statements).
 This is statement coverage, not a claim of exhaustive behavior coverage.
 The original [2026-10-04 raw test report](test-results.txt) is retained as an
 archive. Current machine-readable reports are uploaded by CI for each revision.
@@ -49,6 +49,9 @@ single tested local environment.
 
 ## Additional checks performed
 
+- Nine independent-process concurrency and external-writer cases pass across
+  PostgreSQL, DuckDB and Delta, including target exclusion with separate ledgers,
+  process/session death, foreign-column rejection and source drift during recovery.
 - Thirteen infrastructure regressions pass against an owned PostgreSQL server
   and real SQLite quota/write-denied conditions, including an acknowledged-by-server
   COMMIT whose reply is deliberately dropped. See [operation boundaries](production-operations.md).

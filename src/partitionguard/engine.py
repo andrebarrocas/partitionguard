@@ -9,7 +9,13 @@ from typing import Any
 from .ledger import Ledger
 from .models import Plan, normalize_type
 from .planning import validate_plan
-from .verification import capture_baseline, verify, verify_conversion, verify_operation
+from .verification import (
+    capture_baseline,
+    capture_source_partition,
+    verify,
+    verify_conversion,
+    verify_operation,
+)
 
 
 class EngineError(RuntimeError):
@@ -273,6 +279,13 @@ class Engine:
                         )
                         action_started = time.monotonic()
                         with self.adapter.transaction():
+                            if (
+                                capture_source_partition(self.adapter, plan, partition)
+                                != run["baseline"]["partitions"][partition]
+                            ):
+                                raise SourceDriftError(
+                                    "Source drift detected before partition assignment; restore the approved source or investigate and replan"
+                                )
                             self.adapter.backfill(
                                 plan.current.table, operation, plan.migration.bounds, partition
                             )

@@ -15,6 +15,10 @@ Changes follow semantic versioning. This file records implemented behavior; road
 
 ### Added
 
+- Independent-process concurrency tests across PostgreSQL, DuckDB and Delta,
+  including separate ledgers, process/session lock release and external source
+  writers. Recheck frozen source evidence inside each partition assignment;
+  retain mandatory initial/final verification and writer-freeze requirements.
 - Infrastructure recovery coverage for real PostgreSQL client/session loss,
   owned-server restarts, a dropped COMMIT acknowledgement, and SQLite disk-full,
   write-denied and permission failures. CI requires disposable server binaries.
