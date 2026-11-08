@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import time
 from contextlib import nullcontext
+from datetime import timedelta
 from typing import Any
 
+from .controls import PauseRequest
 from .ledger import Ledger
 from .models import Plan, normalize_type
 from .planning import validate_plan
@@ -60,6 +62,11 @@ class Engine:
             raise EngineError("Adapter does not match the approved plan")
         if plan.migration is None:
             raise EngineError("Execution requires an explicit bounded migration recipe")
+        policy = plan.migration.execution
+        if policy and (policy.statement_timeout_seconds or policy.lock_timeout_seconds):
+            self.adapter.configure_timeouts(
+                policy.statement_timeout_seconds, policy.lock_timeout_seconds
+            )
         if hasattr(self.adapter, "configure_scope"):
             self.adapter.configure_scope(plan.current.table, plan.migration.bounds)
 
@@ -151,6 +158,51 @@ class Engine:
         self._run(plan)
         return self.ledger.approve(plan.id, operator)
 
+    def _verify_canary(self, plan: Plan, run: dict) -> dict:
+        count = plan.migration.execution.canary_partitions
+        bounds = plan.migration.bounds
+        subset = bounds.model_copy(update={"end": bounds.start + timedelta(days=count)})
+        scoped = plan.model_copy(
+            update={
+                "current": plan.current.model_copy(update={"quality": ()}),
+                "proposed": plan.proposed.model_copy(update={"quality": ()}),
+                "migration": plan.migration.model_copy(
+                    update={"bounds": subset, "checks": plan.migration.execution.canary_checks}
+                ),
+            }
+        )
+        partitions = {day: run["baseline"]["partitions"][day] for day in subset.partitions()}
+        baseline = {
+            **run["baseline"],
+            "partitions": partitions,
+            "total_rows": sum(p["row_count"] for p in partitions.values()),
+        }
+        return {**verify(self.adapter, scoped, baseline), "scope": "canary"}
+
+    def approve_continuation(self, plan: Plan, digest: str, operator: str) -> dict:
+        self._validate(plan)
+        if digest != plan.id or not operator.strip():
+            raise EngineError("Continuation approval requires the full plan digest and operator")
+        run = self._run(plan)
+        if run["status"] != "CANARY_PAUSED":
+            raise EngineError("Continuation approval requires a verified canary pause")
+        self._source_unchanged(plan, run)
+        result = self._verify_canary(plan, run)
+        if result.get("passed") is not True:
+            self.ledger.transition(
+                plan.id,
+                "VERIFICATION_FAILED",
+                operator=operator,
+                verification=result,
+                error="Canary changed before continuation approval",
+            )
+            raise VerificationFailed(
+                "Canary verification failed; investigate and explicitly resume to reconcile it"
+            )
+        return self.ledger.transition(
+            plan.id, "CONTINUATION_APPROVED", operator=operator, verification=result
+        )
+
     def apply(
         self,
         plan: Plan,
@@ -158,6 +210,8 @@ class Engine:
         resume: bool = False,
         maintenance_window: bool = False,
         fail_after: int | None = None,
+        cancel_requested=None,
+        max_duration_seconds: int | None = None,
     ) -> dict:
         """Apply an approved additive stage; resume reconciles before skipping.
 
@@ -175,15 +229,71 @@ class Engine:
             raise EngineError("Execution requires an explicitly writable connection")
         if fail_after is not None and (isinstance(fail_after, bool) or fail_after < 1):
             raise EngineError("Failure injection count must be positive")
+        if max_duration_seconds is not None and (
+            type(max_duration_seconds) is not int or not 1 <= max_duration_seconds <= 604800
+        ):
+            raise EngineError("Duration budget requires integer seconds in [1,604800]")
+        policy = plan.migration.execution
+        budgets = [
+            v
+            for v in (max_duration_seconds, policy.max_duration_seconds if policy else None)
+            if v is not None
+        ]
+        budget = min(budgets) if budgets else None
         run = self._run(plan)
         if run["approved_digest"] != plan.id:
             raise EngineError("The exact plan has not been approved")
-        recoverable = {"FAILED", "VERIFICATION_FAILED", "RUNNING", "VERIFYING"}
+        if run["status"] == "CANARY_PAUSED":
+            raise EngineError(
+                "Canary is paused; explicit continuation approval is required before resume"
+            )
+        recoverable = {
+            "FAILED",
+            "VERIFICATION_FAILED",
+            "RUNNING",
+            "VERIFYING",
+            "PAUSED",
+            "CONTINUATION_APPROVED",
+        }
         if run["status"] in recoverable and not resume:
             raise EngineError("Partial or failed execution requires explicit resume")
         if run["status"] not in recoverable | {"APPROVED", "COMPLETE"}:
             raise EngineError("Run is not approved for execution")
         started = time.monotonic()
+        request_file = PauseRequest(self.ledger.path, plan.id)
+        previous_pause = run["control"]["last_pause"]
+        if run["status"] == "PAUSED" and previous_pause and previous_pause.get("token"):
+            request_file.acknowledge(previous_pause["token"])
+
+        def boundary():
+            pending = request_file.read()
+            reason = (
+                "operator_request"
+                if pending
+                else "signal"
+                if cancel_requested and cancel_requested()
+                else "duration_budget"
+                if budget is not None and time.monotonic() - started >= budget
+                else None
+            )
+            if reason is None:
+                return None
+            self.ledger.record_event(
+                plan.id,
+                "PAUSE_REACHED",
+                {
+                    "reason": reason,
+                    "operator": operator,
+                    "token": pending["token"] if pending else None,
+                    "requested_by": pending.get("operator") if pending else None,
+                    "duration_seconds": time.monotonic() - started,
+                },
+            )
+            paused = self.ledger.transition(plan.id, "PAUSED", operator=operator)
+            if pending:
+                request_file.acknowledge(pending["token"])
+            return paused
+
         with self.adapter.lock(plan.current.table):
             try:
                 self._source_unchanged(plan, run)
@@ -216,11 +326,15 @@ class Engine:
                         "operator": operator,
                         "resume": resume,
                         "maintenance_window": True,
+                        "max_duration_seconds": budget,
                         "idempotency": "deterministic replacement assignment from frozen source",
                     },
                 )
                 completed = run["checkpoints"]
                 for operation in plan.migration.operations:
+                    paused = boundary()
+                    if paused:
+                        return paused
                     action_id = f"add:{operation.target}"
                     schema = self.adapter.schema(plan.current.table)
                     if action_id in completed and schema.get(operation.target) == normalize_type(
@@ -245,8 +359,11 @@ class Engine:
                         },
                     )
                 applied = 0
-                for partition in plan.migration.bounds.partitions():
+                for index, partition in enumerate(plan.migration.bounds.partitions(), 1):
                     for operation in plan.migration.operations:
+                        paused = boundary()
+                        if paused:
+                            return paused
                         action_id = f"backfill:{operation.target}:{partition}"
                         if action_id in completed:
                             check = verify_operation(self.adapter, plan, operation, partition)
@@ -312,6 +429,27 @@ class Engine:
                             raise InjectedFailure(
                                 f"Injected failure after {applied} committed backfill operation(s)"
                             )
+                    if policy and index == policy.canary_partitions:
+                        paused = boundary()
+                        if paused:
+                            return paused
+                        result = self._verify_canary(plan, run)
+                        if result.get("passed") is not True:
+                            self.ledger.transition(
+                                plan.id,
+                                "VERIFICATION_FAILED",
+                                operator=operator,
+                                verification=result,
+                                error="Canary verification did not pass",
+                            )
+                            raise VerificationFailed("Required canary verification did not pass")
+                        if not run["control"]["continuation_approved"]:
+                            return self.ledger.transition(
+                                plan.id, "CANARY_PAUSED", operator=operator, verification=result
+                            )
+                paused = boundary()
+                if paused:
+                    return paused
                 self.ledger.transition(plan.id, "VERIFYING", operator=operator)
                 result = verify(self.adapter, plan, run["baseline"])
                 if result.get("passed") is not True:
@@ -325,6 +463,9 @@ class Engine:
                     raise VerificationFailed(
                         "Required final verification did not pass; inspect verification evidence"
                     )
+                paused = boundary()
+                if paused:
+                    return paused
                 self.ledger.record_event(
                     plan.id,
                     "EXECUTION_FINISHED",

@@ -153,7 +153,7 @@ def resume_and_assert(case):
         with Ledger(case.ledger) as ledger:
             engine = Engine(adapter, ledger)
             run = ledger.get(case.plan.id)
-            assert run["status"] in {"RUNNING", "FAILED", "VERIFICATION_FAILED"}
+            assert run["status"] in {"RUNNING", "FAILED", "VERIFICATION_FAILED", "PAUSED"}
             with pytest.raises(Exception, match="explicit resume"):
                 engine.apply(case.plan, "operator", maintenance_window=True)
             baseline = run["baseline"]

@@ -15,6 +15,14 @@ Changes follow semantic versioning. This file records implemented behavior; road
 
 ### Added
 
+- Approved canary scopes/checks, durable CANARY_PAUSED/CONTINUATION_APPROVED and
+  PAUSED states, source/canary rechecks and hash-bound continuation reviews.
+  Original full-scope verification remains mandatory for COMPLETE.
+- Cross-process pause requests, graceful SIGINT/SIGTERM handling at committed
+  action boundaries, per-attempt time budgets and PostgreSQL statement/lock
+  timeout configuration. Paused CLI execution exits 7.
+- Legacy plan-digest compatibility, controlled-execution reports that omit SQL,
+  and an executable canary/pause/continue example with CI artifacts.
 - Independent-process concurrency tests across PostgreSQL, DuckDB and Delta,
   including separate ledgers, process/session lock release and external source
   writers. Recheck frozen source evidence inside each partition assignment;

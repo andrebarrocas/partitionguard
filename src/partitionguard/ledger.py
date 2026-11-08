@@ -32,6 +32,21 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _control(events):
+    review = None
+    approved = False
+    pause = None
+    for event in events:
+        detail = event["detail"]
+        if event["kind"] == "STATE" and detail.get("status") == "CANARY_PAUSED":
+            review, approved = event["hash"], False
+        if event["kind"] == "STATE" and detail.get("status") == "CONTINUATION_APPROVED":
+            approved = review is not None and detail.get("review_hash") == review
+        if event["kind"] == "PAUSE_REACHED":
+            pause = detail
+    return {"canary_review_hash": review, "continuation_approved": approved, "last_pause": pause}
+
+
 class Ledger:
     """One recoverable run per immutable plan, with append-only attempt evidence."""
 
@@ -156,6 +171,7 @@ class Ledger:
         verification = None
         error = None
         checkpoints: dict[str, dict] = {}
+        canary_review = None
         for event in events:
             payload = {
                 key: event[key]
@@ -177,6 +193,26 @@ class Ledger:
                 attempts = event["detail"]["attempt"]
                 verification = event["detail"].get("verification")
                 error = event["detail"].get("error")
+                if status == "COMPLETE" and verification and verification.get("scope") == "canary":
+                    raise LedgerIntegrityError("Canary evidence cannot complete the full migration")
+                if status == "CANARY_PAUSED":
+                    if (
+                        not verification
+                        or verification.get("passed") is not True
+                        or verification.get("scope") != "canary"
+                    ):
+                        raise LedgerIntegrityError("Canary pause lacks passing scoped verification")
+                    canary_review = event["hash"]
+                if status == "CONTINUATION_APPROVED" and (
+                    not canary_review
+                    or event["detail"].get("review_hash") != canary_review
+                    or not verification
+                    or verification.get("passed") is not True
+                    or verification.get("scope") != "canary"
+                ):
+                    raise LedgerIntegrityError(
+                        "Continuation approval does not match its canary review"
+                    )
                 if status == "RUNNING" and metadata["started_at"] is None:
                     metadata["started_at"] = event["timestamp"]
                 metadata["finished_at"] = (
@@ -233,6 +269,7 @@ class Ledger:
         for field in ("plan", "baseline", "verification"):
             value[field] = json.loads(value[field]) if value[field] is not None else None
         value["migration_id"] = plan_id
+        value["control"] = _control(self.events(plan_id))
         value["checkpoints"] = {
             item["action_id"]: {
                 "detail": json.loads(item["detail"]),
@@ -339,16 +376,43 @@ class Ledger:
         allowed = {
             "PREPARED": {"FAILED"},
             "APPROVED": {"RUNNING", "FAILED", "VERIFICATION_FAILED"},
-            "RUNNING": {"RUNNING", "VERIFYING", "FAILED", "VERIFICATION_FAILED"},
-            "VERIFYING": {"COMPLETE", "FAILED", "VERIFICATION_FAILED", "RUNNING"},
+            "RUNNING": {
+                "RUNNING",
+                "VERIFYING",
+                "FAILED",
+                "VERIFICATION_FAILED",
+                "PAUSED",
+                "CANARY_PAUSED",
+            },
+            "VERIFYING": {"COMPLETE", "FAILED", "VERIFICATION_FAILED", "RUNNING", "PAUSED"},
+            "PAUSED": {"RUNNING", "FAILED", "VERIFICATION_FAILED"},
+            "CANARY_PAUSED": {"CONTINUATION_APPROVED", "FAILED", "VERIFICATION_FAILED"},
+            "CONTINUATION_APPROVED": {"RUNNING", "FAILED", "VERIFICATION_FAILED"},
             "FAILED": {"RUNNING", "FAILED", "VERIFICATION_FAILED"},
             "VERIFICATION_FAILED": {"RUNNING", "VERIFICATION_FAILED", "FAILED"},
             "COMPLETE": {"COMPLETE", "VERIFICATION_FAILED", "FAILED"},
         }
         if status not in allowed.get(run["status"], set()):
             raise LedgerError(f"Invalid execution transition {run['status']} -> {status}")
-        if status == "COMPLETE" and (not verification or verification.get("passed") is not True):
+        if status == "COMPLETE" and (
+            not verification
+            or verification.get("passed") is not True
+            or verification.get("scope") == "canary"
+        ):
             raise LedgerError("Completion requires passing verification evidence")
+        if status in {"CANARY_PAUSED", "CONTINUATION_APPROVED"}:
+            policy = run["plan"].get("migration", {}).get("execution", {})
+            if (
+                not policy.get("canary_partitions")
+                or not verification
+                or verification.get("passed") is not True
+                or verification.get("scope") != "canary"
+            ):
+                raise LedgerError(
+                    "Canary lifecycle requires an approved policy and passing scoped evidence"
+                )
+        if status == "CONTINUATION_APPROVED" and (not operator or not operator.strip()):
+            raise LedgerError("Continuation requires an explicit approving operator")
         timestamp = _now()
         attempts = run["attempts"] + (1 if status == "RUNNING" else 0)
         started = run["started_at"] or (timestamp if status == "RUNNING" else None)
@@ -382,6 +446,11 @@ class Ledger:
                     "updated_at": timestamp,
                     "started_at": started,
                     "finished_at": finished,
+                    **(
+                        {"review_hash": run["control"]["canary_review_hash"]}
+                        if status == "CONTINUATION_APPROVED"
+                        else {}
+                    ),
                 },
                 timestamp=timestamp,
             )

@@ -8,6 +8,12 @@ The repository includes workflows, not a published service. A repository owner m
 
 GitHub Actions are pinned by full commit SHA. Dependabot proposes updates for Actions and Python dependencies. Review behavior changes and integration results before merging dependency updates.
 
+CI and release build jobs require PostgreSQL server binaries for owned-instance
+restart tests; missing binaries cannot silently skip this safety gate. CI also
+exercises independent-process locks, lost COMMIT acknowledgements, cooperative
+cancellation, canary approval and pause/continuation. The Python 3.12 job publishes
+`migration-evidence` and `execution-controls` demonstrations alongside test reports.
+
 ## Preparing a release
 
 1. Recheck project/package naming and establish ownership of the selected PyPI project. The working name is not a trademark clearance.

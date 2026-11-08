@@ -25,7 +25,7 @@ backup facilities rather than copying only a live main file.
 Infrastructure regression tests create their **own** temporary PostgreSQL data
 directory and server on loopback. They never restart a connection supplied through
 `PARTITIONGUARD_TEST_POSTGRES`. Install PostgreSQL server binaries (`initdb` and
-`pg_ctl`) for these tests. CI requires them with
+`pg_ctl`) for these tests. CI and release builds require them with
 `PARTITIONGUARD_REQUIRE_INFRA=1`; otherwise missing binaries produce explicit skips.
 
 ```sh
@@ -85,3 +85,122 @@ source changes during execution/recovery, and DuckDB/Delta process locks.
    coordinate producer behavior for future records. Backfilling history does not
    implement producer dual writes or consumer deployment. Restore scheduling and
    access intentionally, then monitor new data and the retained original column.
+
+## Canary, pause and continuation
+
+Add an execution policy to the existing migration manifest before planning and
+approval. It changes the plan digest and cannot reuse an earlier approval.
+Existing manifests without `execution` retain their original serialization,
+digest and behavior; existing SQLite ledgers require no schema conversion.
+
+```yaml
+execution:
+  canary_partitions: 1
+  canary_checks:
+    - kind: sql
+      sql: SELECT COUNT(*) = 2 FROM {scope}
+  max_duration_seconds: 300
+```
+
+The canary is the first N daily partitions in the approved half-open date range.
+Choose checks appropriate for your actual canary data; the two-row assertion
+above belongs to the synthetic example. Source fingerprints, schema, partition
+counts, keys, column constraints and conversion parity are checked on that
+subset, followed by the explicitly approved `canary_checks`. Full-scope contract
+quality rules and migration checks are deferred until final verification: a
+full-backfill assertion such as COUNT(*) = 6 is not a one-partition assertion.
+No custom full-policy check is silently rewritten or considered satisfied by
+the canary. Passing the canary never certifies the whole scope.
+
+```sh
+partitionguard migrate plan.json --ledger ledger.sqlite --execute \
+  --maintenance-window --operator executor
+# Exit 7: CANARY_PAUSED, with passing scoped evidence and committed checkpoints.
+
+partitionguard report plan.json --ledger ledger.sqlite --output canary.html
+partitionguard approve-continuation plan.json --ledger ledger.sqlite \
+  --digest FULL_PLAN_DIGEST --operator reviewer
+partitionguard migrate plan.json --ledger ledger.sqlite --execute --resume \
+  --maintenance-window --operator executor
+```
+
+Set `PARTITIONGUARD_CONNECTION` for these database commands. Continuation approval
+rechecks the entire frozen source and the canary, persists the approving operator,
+and references the exact hash-linked canary review. The next execution still
+requires `--resume`, reconciles checkpoints and rechecks canary verification.
+A crash after canary commit but before the pause cannot bypass review: resume
+first reconstructs the verified canary pause. Corrupt canaries fail approval and
+require investigation/reconciliation and a new review. Final `COMPLETE` requires
+the original full-scope policy. Approvals remain self-reported identities, not
+authenticated access controls.
+
+### Cooperative pause and cancellation
+
+```sh
+partitionguard pause plan.json --ledger ledger.sqlite --operator oncall
+```
+
+This queues a plan-scoped request on the controller's local filesystem without
+opening its busy SQLite ledger. It reports PAUSE_REQUESTED, not an assertion
+that execution has already stopped. The controller records PAUSED at its next
+action boundary. SIGINT and SIGTERM request the same cooperative behavior.
+The current transaction finishes verification/commit and checkpoint persistence;
+earlier commits remain. No cross-action rollback is attempted. Confirm PAUSED
+through `status` before making operational changes.
+
+Pause requests survive process death. They are atomically created beside the
+ledger as `<ledger>.<plan-digest>.pause`, with restricted file permissions; existing
+requests are not overwritten and symlinks/nonregular files are rejected. Protect
+this directory as carefully as the ledger. Acknowledgement follows durable pause
+evidence, and resume handles a crash between recording the pause and removing
+its request. A newer request is not cleared as an old acknowledgement. A queued
+request for an already completed run has no active controller to pause.
+
+Use explicit `migrate --execute --resume` after a recorded ordinary pause. A
+canary pause additionally requires `approve-continuation`. CLI exit 7 means
+paused/waiting for review; it must not be treated as successful completion.
+SIGKILL cannot be handled gracefully and continues to require crash recovery.
+Allow the process supervisor enough termination grace for an atomic action to
+finish, or expect forced-kill recovery instead.
+
+### Time budgets and database timeouts
+
+`execution.max_duration_seconds` is a per-execution-invocation cooperative duration budget,
+not a hard wall-clock interruption or a whole-migration elapsed-time limit.
+It includes source reconciliation inside the engine and is checked between
+actions and before completion. An in-flight read, write or verification can
+overrun it; the next boundary pauses without starting another action. A shorter
+`migrate --execute --max-duration-seconds N` can tighten an invocation's budget.
+It cannot enlarge the approved limit. Every invocation records its effective
+budget. Repeated resumes retain the original finite partition/row scope.
+
+The built-in PostgreSQL adapter also supports approved
+`statement_timeout_seconds` and `lock_timeout_seconds` under `execution`.
+Unspecified values retain its 30-second statement and 5-second lock defaults.
+They apply to engine database sessions, including preflight reads. A real database
+timeout fails the action and requires explicit recovery; it is not a clean pause.
+Set a connection-establishment timeout in the PostgreSQL DSN when needed; the
+engine budget begins after connection setup. DuckDB/Delta do not advertise these
+PostgreSQL settings; plans that request them on other adapters are blocked.
+
+## Reproducible controlled-execution demonstration
+
+```sh
+python examples/controlled_execution.py --output /tmp/partitionguard-controls
+```
+
+The directory must not exist. Actual output observed on 2026-11-08:
+
+```text
+Canary: CANARY_PAUSED; 2 checkpoints; scoped verification passed (exit 7)
+Resume without continuation approval: refused (exit 6)
+Exact-plan continuation approved after fresh canary/source recheck
+Durable pause request: PAUSED; no additional checkpoints (exit 7)
+Explicit resume: COMPLETE; 4 checkpoints; full final policy passed
+```
+
+Inspect `canary.json`, `completed.html`, `completed.json` and `transcript.txt`.
+CI runs the demonstration on Python 3.12 and publishes only these filtered files
+as `execution-controls`; source data and the ledger remain outside the artifact.
+Reports distinguish canary verification from final verification and omit SQL
+from the execution policy, as they do for the rest of the plan.

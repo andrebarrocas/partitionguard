@@ -77,6 +77,11 @@ flowchart LR
     D --> A[APPROVE exact digest]
     A --> E[EXECUTE bounded actions]
     E --> V[VERIFY required policy]
+    E --> CP[CANARY_PAUSED]
+    CP --> CA[Approve continuation]
+    CA --> R
+    E --> H[PAUSED]
+    H --> R
     V --> C[COMPLETE additive stage]
     E --> F[FAILED]
     V --> G[VERIFICATION_FAILED]
@@ -92,6 +97,11 @@ replay of idempotent assignments, not cross-system exactly-once execution or
 automatic rollback. See [recovery tutorial](docs/tutorials/04-recovery.md).
 
 ## Share migration evidence
+
+For canary approval, durable pause/continuation, cooperative cancellation and
+execution budgets, see [production operation controls](docs/production-operations.md).
+Run `python examples/controlled_execution.py --output /tmp/partitionguard-controls`
+to execute the synthetic canary/pause/resume demonstration and export its reports.
 
 Export a recorded run without a database connection:
 
@@ -168,6 +178,7 @@ partitionguard plan current.yaml proposed.yaml --migration migration.yaml \
 Exit codes: `0` success, `2` invalid input, `3` CI/contract policy blocked,
 `4` execution/infrastructure failure, `5` failed verification, `6` unmet safety
 precondition or approval. Analysis commands require no database credentials.
+Exit `7` means execution paused or awaits canary review, not completed migration.
 A generated Markdown summary can be appended to `$GITHUB_STEP_SUMMARY`; the CLI
 never posts to a pull request automatically.
 
@@ -177,13 +188,17 @@ Local verification on **2026-11-08**, with PostgreSQL enabled:
 
 | Check | Result |
 | --- | --- |
-| Complete test suite | 302 passed, 3 backend-specific skips |
-| Statement coverage | 89.8% |
+| Complete test suite | 335 passed, 3 backend-specific skips |
+| Statement coverage | 89.9% |
 | Documented tutorials | All 7 executed successfully |
 | Crash/recovery/report demonstration | SIGKILL, fresh-process recovery, corruption detection and repair passed |
+| Controlled execution | Verified canary, exact-plan continuation approval, durable pause and full-policy completion passed |
 | Wheel and source distribution | Build and strict publication validation passed |
 | Code quality and documentation | Lint, formatting and strict documentation build passed |
 
+Thirty-three operational-control cases cover canary review, final-policy
+enforcement, crash gaps, pause requests, signals, budgets, database timeouts,
+legacy plan compatibility and evidence filtering.
 Nine concurrency cases cover separate controllers/ledgers, process/session lock
 release, and unexpected source writers across PostgreSQL, DuckDB and Delta.
 Thirteen infrastructure cases cover PostgreSQL client/session loss, server

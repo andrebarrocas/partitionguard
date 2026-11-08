@@ -9,7 +9,14 @@ import re
 from datetime import date, timedelta
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_serializer,
+    model_validator,
+)
 
 _TYPES = {
     "STRING": "STRING",
@@ -220,6 +227,14 @@ class Operation(Model):
         return self
 
 
+class ExecutionPolicy(Model):
+    canary_partitions: int | None = Field(default=None, ge=1, le=10000, strict=True)
+    canary_checks: tuple[Check, ...] = ()
+    max_duration_seconds: int | None = Field(default=None, ge=1, le=604800, strict=True)
+    statement_timeout_seconds: int | None = Field(default=None, ge=1, le=86400, strict=True)
+    lock_timeout_seconds: int | None = Field(default=None, ge=1, le=86400, strict=True)
+
+
 class MigrationSpec(Model):
     bounds: Bounds
     operations: tuple[Operation, ...] = ()
@@ -227,6 +242,15 @@ class MigrationSpec(Model):
     estimated_bytes: int | None = Field(default=None, ge=0)
     require_nonempty: bool = True
     maintenance_window: bool = True
+    execution: ExecutionPolicy | None = None
+
+    @model_serializer(mode="wrap")
+    def serialize(self, handler):
+        value = handler(self)
+        # Existing plans retain their exact serialized representation and digest.
+        if self.execution is None:
+            value.pop("execution", None)
+        return value
 
     @model_validator(mode="after")
     def valid(self):
@@ -235,6 +259,13 @@ class MigrationSpec(Model):
             raise ValueError("Each target column can have only one operation")
         if not self.maintenance_window:
             raise ValueError("Online writers are unsupported; maintenance_window must be true")
+        if self.execution and self.execution.canary_partitions:
+            if not self.operations:
+                raise ValueError("Canary execution requires backfill operations")
+            if self.execution.canary_partitions > len(self.bounds.partitions()):
+                raise ValueError("Canary exceeds the approved partition scope")
+        if self.execution and self.execution.canary_checks and not self.execution.canary_partitions:
+            raise ValueError("Canary checks require canary_partitions")
         return self
 
 

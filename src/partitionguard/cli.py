@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+from contextlib import nullcontext
 from functools import wraps
 from pathlib import Path
 from typing import Annotated
@@ -106,6 +107,16 @@ def render_plan(p):
         console.print(
             f"Actions: {len(p.actions)} · source columns retained · writer maintenance window required"
         )
+        if p.migration.execution:
+            policy = p.migration.execution
+            if policy.canary_partitions:
+                console.print(
+                    f"Canary: first {policy.canary_partitions} partitions; passing scoped verification and separate continuation approval required"
+                )
+            if policy.max_duration_seconds:
+                console.print(
+                    f"Attempt duration budget: {policy.max_duration_seconds}s; pauses at action boundaries"
+                )
     for reason in p.risk.reasons:
         console.print(f"• {reason}")
     console.print(
@@ -142,6 +153,11 @@ def summary(p):
             "",
             f"Backfill: {len(p.migration.bounds.partitions())} partitions; {len(p.actions)} actions.",
         ]
+        if p.migration.execution:
+            policy = p.migration.execution
+            lines += [
+                f"Execution controls: canary partitions={policy.canary_partitions}; attempt duration budget={policy.max_duration_seconds}s. Full final policy remains mandatory."
+            ]
     if p.blockers:
         lines += ["", "Blocked:"] + [f"- {cell(b)}" for b in p.blockers]
     return "\n".join(lines) + "\n"
@@ -326,15 +342,29 @@ def migrate(
     resume: bool = False,
     maintenance_window: bool = False,
     operator: str = "",
+    max_duration_seconds: int | None = None,
     json_output: Annotated[bool, typer.Option("--json")] = False,
 ):
     """Dry-run by default. Writes need --execute, approval, operator and maintenance window."""
     if resume and not execute:
         raise ValueError("--resume requires --execute")
+    if max_duration_seconds is not None and not execute:
+        raise ValueError("--max-duration-seconds requires --execute")
     stack, p, engine = engine_context(plan_file, connection, ledger, not execute)
-    with stack:
+    from .controls import graceful_signals
+
+    with stack, graceful_signals() if execute else nullcontext(None) as cancelled:
         result = (
-            engine.apply(p, operator, resume, maintenance_window) if execute else engine.dry_run(p)
+            engine.apply(
+                p,
+                operator,
+                resume,
+                maintenance_window,
+                cancel_requested=cancelled,
+                max_duration_seconds=max_duration_seconds,
+            )
+            if execute
+            else engine.dry_run(p)
         )
         output(
             {
@@ -346,6 +376,44 @@ def migrate(
             },
             json_output,
         )
+        if result["status"] in {"PAUSED", "CANARY_PAUSED"}:
+            raise typer.Exit(7)
+
+
+@app.command("approve-continuation")
+@guarded
+def approve_continuation(
+    plan_file: Path,
+    digest: Annotated[str, typer.Option()],
+    operator: Annotated[str, typer.Option()],
+    connection: str | None = None,
+    ledger: Path = Path(".partitionguard/ledger.sqlite"),
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+):
+    """Recheck a paused canary and approve continuation; does not execute writes."""
+    stack, p, engine = engine_context(plan_file, connection, ledger, True)
+    with stack:
+        result = engine.approve_continuation(p, digest, operator)
+        output(
+            {"plan_id": p.id, "status": result["status"], "control": result["control"]}, json_output
+        )
+
+
+@app.command()
+@guarded
+def pause(
+    plan_file: Path,
+    operator: Annotated[str, typer.Option()],
+    ledger: Path = Path(".partitionguard/ledger.sqlite"),
+):
+    """Queue a durable boundary pause without opening a busy controller's ledger."""
+    from .controls import PauseRequest
+
+    if not ledger.is_file():
+        raise ValueError("Ledger does not exist")
+    p = load_plan(plan_file)
+    request = PauseRequest(ledger, p.id).create(operator)
+    output({"plan_id": p.id, "request": request, "status": "PAUSE_REQUESTED"}, True)
 
 
 @app.command()

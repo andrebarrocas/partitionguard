@@ -25,7 +25,11 @@ def _verification(result):
         {key: check.get(key) for key in ("name", "partition", "passed")}
         for check in result.get("checks", [])
     ]
-    return {"passed": result.get("passed") is True, "checks": checks}
+    return {
+        "passed": result.get("passed") is True,
+        "checks": checks,
+        "scope": "canary" if result.get("scope") == "canary" else "full",
+    }
 
 
 def build_report(plan: Plan, ledger: Ledger) -> dict:
@@ -38,6 +42,9 @@ def build_report(plan: Plan, ledger: Ledger) -> dict:
         raise ValueError("Saved plan content does not match")
     timeline = []
     latest = _verification(run["verification"])
+    if latest and latest["scope"] == "canary":
+        latest = None
+    canary = None
     for event in ledger.events(plan.id):
         detail = event["detail"]
         item = {
@@ -56,6 +63,10 @@ def build_report(plan: Plan, ledger: Ledger) -> dict:
                     "skipped",
                     "duration_seconds",
                     "error_type",
+                    "review_hash",
+                    "reason",
+                    "requested_by",
+                    "max_duration_seconds",
                 )
                 if key in detail
             },
@@ -65,8 +76,10 @@ def build_report(plan: Plan, ledger: Ledger) -> dict:
         )
         if isinstance(result, dict):
             item["verification"] = _verification(result)
+            if result.get("scope") == "canary":
+                canary = item["verification"]
             # A partition check cannot replace the final policy result.
-            if event["kind"] in {
+            if result.get("scope") != "canary" and event["kind"] in {
                 "VERIFICATION",
                 "STATE",
                 "IDEMPOTENT_RECHECK",
@@ -103,6 +116,27 @@ def build_report(plan: Plan, ledger: Ledger) -> dict:
             for action_id, checkpoint in run["checkpoints"].items()
         ],
         "latest_recorded_verification": latest,
+        "canary_verification": canary,
+        "execution_policy": {
+            **{
+                key: getattr(migration.execution, key)
+                for key in (
+                    "canary_partitions",
+                    "max_duration_seconds",
+                    "statement_timeout_seconds",
+                    "lock_timeout_seconds",
+                )
+            },
+            "canary_checks": [
+                {"kind": check.kind, "column": check.column, "columns": list(check.columns)}
+                for check in migration.execution.canary_checks
+            ],
+        }
+        if migration and migration.execution
+        else None,
+        "control": {
+            key: run["control"][key] for key in ("canary_review_hash", "continuation_approved")
+        },
         "timeline": timeline,
         "limitations": list(LIMITATIONS),
     }
@@ -136,6 +170,9 @@ def render_html(report: dict) -> str:
             ("Partitions", "partitions"),
             ("Persisted checkpoints", "checkpoints"),
             ("Latest recorded verification", "latest_recorded_verification"),
+            ("Canary verification", "canary_verification"),
+            ("Execution policy", "execution_policy"),
+            ("Continuation approval", "control"),
         )
     )
     return (

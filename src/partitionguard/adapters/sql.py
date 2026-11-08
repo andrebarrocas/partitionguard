@@ -204,6 +204,18 @@ class PostgresAdapter(SQLAdapter):
     dialect = "postgres"
     placeholder = "%s"
 
+    def configure_timeouts(self, statement_seconds=None, lock_seconds=None):
+        for setting, seconds in (
+            ("statement_timeout", statement_seconds),
+            ("lock_timeout", lock_seconds),
+        ):
+            if seconds is not None:
+                if type(seconds) is not int or not 1 <= seconds <= 86400:
+                    raise ValueError("Database timeouts require integer seconds in [1,86400]")
+                self._connection.execute(
+                    "SELECT pg_catalog.set_config(%s,%s,false)", (setting, f"{seconds}s")
+                )
+
     def __init__(self, connection, read_only=True):
         import psycopg
 

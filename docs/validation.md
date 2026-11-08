@@ -8,8 +8,8 @@ Its `test-results-python-*` artifacts contain JUnit test results and coverage.
 
 ## Complete suite
 
-**302 passed, 3 skipped in 30.49 seconds.** Statement coverage is
-**89.8%** (1856 of 2067 statements).
+**335 passed, 3 skipped in 23.95 seconds.** Statement coverage is
+**89.9%** (2061 of 2293 statements).
 This is statement coverage, not a claim of exhaustive behavior coverage.
 The original [2026-10-04 raw test report](test-results.txt) is retained as an
 archive. Current machine-readable reports are uploaded by CI for each revision.
@@ -49,13 +49,22 @@ single tested local environment.
 
 ## Additional checks performed
 
+- Thirty-three operational-control regressions cover verified canaries,
+  hash-linked continuation approval, crash-before-review recovery, mandatory full
+  final policy, cross-process pause requests, SIGINT/SIGTERM on DuckDB/PostgreSQL,
+  duration budgets, actual PostgreSQL statement/lock timeouts, Delta reopen/
+  continuation and legacy plan digests/CLI execution. An older November 5 ledger
+  also exports successfully through the updated reporter.
+- The canary/pause/continuation example executes successfully; its actual output
+  is in [production operations](production-operations.md). CI publishes filtered
+  `execution-controls` evidence. SQL inside canary checks is excluded from reports.
 - Nine independent-process concurrency and external-writer cases pass across
   PostgreSQL, DuckDB and Delta, including target exclusion with separate ledgers,
   process/session death, foreign-column rejection and source drift during recovery.
 - Thirteen infrastructure regressions pass against an owned PostgreSQL server
   and real SQLite quota/write-denied conditions, including an acknowledged-by-server
   COMMIT whose reply is deliberately dropped. See [operation boundaries](production-operations.md).
-- Twelve new regression cases cover three real SIGKILL crash windows and nine
+- Twelve earlier regression cases cover three real SIGKILL crash windows and nine
   evidence-report cases (including parameterized CLI cases). Reopened stores and
   a fresh public CLI verify recovery without Python cleanup. These are DuckDB
   process-crash tests, not power-loss or PostgreSQL server-restart tests.
@@ -95,6 +104,10 @@ exclusion of generated data.
 The earlier 2026-10-31 full-suite result was 268 passed, 3 skipped, with 89.4%
 statement coverage. The current result includes the additional crash/report tests;
 timings are individual observations, not performance comparisons.
+
+The three 2026-11-08 implementation checkpoints were 293 passed (infrastructure),
+302 passed (concurrency), and 335 passed (operational controls), each with the same
+three backend-specific skips. Each change was committed and pushed separately.
 
 ## Safety regressions exercised
 

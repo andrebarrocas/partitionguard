@@ -372,6 +372,15 @@ def plan(
             )
     else:
         b = migration.bounds
+        policy = migration.execution
+        if (
+            policy
+            and (policy.statement_timeout_seconds or policy.lock_timeout_seconds)
+            and adapter != "postgres"
+        ):
+            blockers.append(
+                "Configurable database timeouts are supported only by the PostgreSQL adapter"
+            )
         if (
             current.column_map.get(b.column) is None
             or current.column_map[b.column].data_type != "DATE"
@@ -421,7 +430,7 @@ def plan(
                         description=f"Assign {op.target} from {op.source} for {partition}; deterministic {op.transform}",
                     )
                 )
-        for check in migration.checks:
+        for check in (*migration.checks, *(policy.canary_checks if policy else ())):
             names = set(check.columns) | {v for v in (check.column, check.reference) if v}
             if not names <= set(proposed.column_map):
                 blockers.append("Verification check references columns absent from target")

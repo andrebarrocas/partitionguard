@@ -58,6 +58,19 @@ jobs:
       - name: Demonstrate process-crash recovery and evidence export
         if: matrix.python == '3.12'
         run: python examples/recovery_report.py --output "$RUNNER_TEMP/partitionguard-evidence"
+      - name: Demonstrate approved canary, durable pause and continuation
+        if: matrix.python == '3.12'
+        run: python examples/controlled_execution.py --output "$RUNNER_TEMP/partitionguard-controls"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always() && matrix.python == '3.12'
+        with:
+          name: execution-controls
+          path: |
+            ${{ runner.temp }}/partitionguard-controls/canary.json
+            ${{ runner.temp }}/partitionguard-controls/completed.html
+            ${{ runner.temp }}/partitionguard-controls/completed.json
+            ${{ runner.temp }}/partitionguard-controls/transcript.txt
+          if-no-files-found: warn
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always() && matrix.python == '3.12'
         with:

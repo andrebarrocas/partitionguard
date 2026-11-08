@@ -57,6 +57,14 @@ checkpoints, rejects execution without explicit resume, and recovers through a
 new public-CLI process. Final counts, assignments, out-of-scope data and ledger
 integrity are checked. These tests establish local process-crash behavior, not
 power-loss durability, PostgreSQL server-restart behavior, or distributed recovery.
+Separate [infrastructure tests](production-operations.md) now exercise owned-server
+PostgreSQL restarts, session loss and a dropped COMMIT acknowledgement.
+
+Canary-enabled runs additionally export filtered execution-policy fields, canary
+verification, and the review hash/continuation approval. Canary evidence is labelled
+`scope: canary` and never replaces `latest_recorded_verification` for the full
+scope. An ordinary pause or canary pause is not COMPLETE. Check SQL is omitted
+even when it appears inside the new execution policy.
 
 ## Evidence and sharing boundaries
 
