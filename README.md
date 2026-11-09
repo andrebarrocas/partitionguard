@@ -9,7 +9,7 @@ an ODCS contract change and a bounded migration recipe into a reviewable plan,
 requires approval of that exact plan, records each committed partition, and
 verifies the result before marking the stage complete.
 
-**0.1.0 is an early release candidate with public source and automated verification.**
+**0.2.0 is an early release candidate with public source and automated verification.**
 The repository includes installable distributions and publishing workflows;
 a PyPI package or tagged release has not been published. The original working name was DataGuard; see the
 [name availability review](docs/name-review.md).
@@ -182,14 +182,23 @@ Exit `7` means execution paused or awaits canary review, not completed migration
 A generated Markdown summary can be appended to `$GITHUB_STEP_SUMMARY`; the CLI
 never posts to a pull request automatically.
 
+## Production prerequisites
+
+Review the [measured workload limits](docs/workload-limits.md),
+[controlled approval and backup procedures](docs/controlled-approvals.md),
+and [supported environments and upgrade rehearsal](docs/supported-environments.md).
+Independent security review and deployment provisioning remain release gates.
+
 ## Verification results
 
-Local verification on **2026-11-08**, with PostgreSQL enabled:
+Local verification on **2026-11-09**, with PostgreSQL enabled:
 
 | Check | Result |
 | --- | --- |
-| Complete test suite | 335 passed, 3 backend-specific skips |
-| Statement coverage | 89.9% |
+| Complete test suite | 346 passed, 3 backend-specific skips |
+| Statement coverage | 90.4% |
+| Minimum supported direct dependencies | 346 passed, same 3 expected skips |
+| 0.1.0 → 0.2.0 upgrade rehearsal | DuckDB, PostgreSQL and Delta recovered without rebaselining |
 | Documented tutorials | All 7 executed successfully |
 | Crash/recovery/report demonstration | SIGKILL, fresh-process recovery, corruption detection and repair passed |
 | Controlled execution | Verified canary, exact-plan continuation approval, durable pause and full-policy completion passed |

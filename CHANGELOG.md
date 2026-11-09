@@ -2,7 +2,16 @@
 
 Changes follow semantic versioning. This file records implemented behavior; roadmap entries are not released features.
 
-## Unreleased
+## 0.2.0 candidate (unreleased)
+
+- Measure DuckDB fingerprint workloads, bound verification sorting and bytes,
+  and lower default row limits for new manifests without changing saved digests.
+- Verify SSH signatures over exact prepared run and canary receipts in a
+  controlled runner; restrict ledger permissions and support checked backups.
+- Test minimum runtime dependencies and current environments. Exercise a shared
+  adapter conformance scenario and rehearse 0.1.0 recovery without replacing its
+  baseline or checkpoints. Version the SQLite schema and reject unknown versions.
+- Independent security sign-off remains open.
 
 ### Fixed
 

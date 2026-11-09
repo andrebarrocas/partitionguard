@@ -1,6 +1,6 @@
 # Validation record
 
-Recorded 2026-11-08 for the public-source 0.1.0 candidate. Results below were
+Recorded 2026-11-09 for the public-source 0.2.0 candidate. Results below were
 observed locally using the development environment created on 2026-10-31. For remote results on the revision
 being reviewed, inspect the
 [CI workflow](https://github.com/andrebarrocas/partitionguard/actions/workflows/ci.yml?query=branch%3Amain).
@@ -8,9 +8,16 @@ Its `test-results-python-*` artifacts contain JUnit test results and coverage.
 
 ## Complete suite
 
-**335 passed, 3 skipped in 23.95 seconds.** Statement coverage is
-**89.9%** (2061 of 2293 statements).
+**346 passed, 3 skipped in 46.12 seconds.** Statement coverage is
+**90.4%** (2287 of 2529 statements).
 This is statement coverage, not a claim of exhaustive behavior coverage.
+The minimum direct dependency profile passed 346 tests with the same three
+skips in 43.49 seconds. The separate previous-wheel rehearsal passed all
+three backends in 20.13 seconds. See [supported environments](supported-environments.md).
+The security tests use real SSH signatures, including run/canary replay rejection
+and restoring private signed approval evidence from a checked snapshot.
+Independent security sign-off is still outstanding.
+
 The original [2026-10-04 raw test report](test-results.txt) is retained as an
 archive. Current machine-readable reports are uploaded by CI for each revision.
 
@@ -127,5 +134,5 @@ Source is public. No tagged package release, hosted documentation, live AWS
 integration, Windows support, online migrations under arbitrary writers,
 distributed ledger, exhaustive ODCS conformance, automatic consumer cutover,
 destructive retirement, or production-scale performance is claimed. The local
-fingerprint method is deliberately capped and materializes rows in memory.
+fingerprint method is capped and uses bounded local sort runs.
 External user validation and external security review remain adoption gates.

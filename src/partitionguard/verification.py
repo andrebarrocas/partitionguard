@@ -128,6 +128,27 @@ def capture_baseline(adapter, plan):
     }
 
 
+def runtime_compatible(observed, approved):
+    """Allow only the explicitly rehearsed core upgrade, with identical adapters."""
+    if not isinstance(approved, dict):
+        return False
+    if (
+        approved.get("core") == "0.1.0"
+        and observed.get("core") == "0.2.0"
+        and observed.get("adapter") in {"duckdb", "postgres", "delta"}
+    ):
+        approved = {**approved, "core": "0.2.0"}
+    return observed == approved
+
+
+def baseline_matches(observed, approved):
+    return runtime_compatible(
+        observed["runtime_signature"], approved.get("runtime_signature")
+    ) and {k: v for k, v in observed.items() if k != "runtime_signature"} == {
+        k: v for k, v in approved.items() if k != "runtime_signature"
+    }
+
+
 def _check(name, passed, observed, expected, partition=None):
     return {
         "name": name,
@@ -436,7 +457,7 @@ def verify(adapter, plan, baseline):
         checks.append(
             _check(
                 "runtime_signature",
-                current["runtime_signature"] == baseline.get("runtime_signature"),
+                runtime_compatible(current["runtime_signature"], baseline.get("runtime_signature")),
                 current["runtime_signature"],
                 baseline.get("runtime_signature"),
             )

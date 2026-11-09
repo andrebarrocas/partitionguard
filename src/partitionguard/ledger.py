@@ -97,6 +97,9 @@ class Ledger:
             raise LedgerError("Ledger is in use by another controller") from exc
         try:
             self.connection = sqlite3.connect(str(self.path), timeout=5)
+            schema_version = self.connection.execute("PRAGMA user_version").fetchone()[0]
+            if schema_version not in {0, 1}:
+                raise LedgerError("Unsupported ledger schema version; use a compatible controller")
             self.connection.row_factory = sqlite3.Row
             self.connection.execute("PRAGMA journal_mode=WAL")
             self.connection.execute("PRAGMA synchronous=FULL")
@@ -131,6 +134,8 @@ class Ledger:
                     BEFORE DELETE ON events BEGIN
                     SELECT RAISE(ABORT, 'events are append-only'); END;
             """)
+            if schema_version == 0:
+                self.connection.execute("PRAGMA user_version=1")
         except BaseException:
             if hasattr(self, "connection"):
                 self.connection.close()

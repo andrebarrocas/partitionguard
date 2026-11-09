@@ -52,7 +52,7 @@ def test_help_init_and_version(tmp_path):
     result = runner.invoke(app, ["--version"])
     # --version must work without a subcommand.
     assert result.exit_code == 0, result.output
-    assert "0.1.0" in result.output
+    assert "0.2.0" in result.output
     invoke(["init", tmp_path / "example"])
     invoke(["init", tmp_path / "example"], 2)
     assert not list(tmp_path.rglob("*.duckdb"))

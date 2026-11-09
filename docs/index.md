@@ -22,3 +22,7 @@ execution timeline as HTML or JSON. Its runnable demonstration shows real
 process termination, fresh-process recovery, corruption detection and repair.
 
 Read the [migration model](migration-model.md), [backfill model](backfill-model.md), [verification model](verification-model.md), and [plugin architecture](plugin-architecture.md) to understand the safety contract. The [roadmap](roadmap.md) separates implemented scope from future integrations. The [candidate release notes](releases/0.1.0.md) and [release operations](release-operations.md) explain what still needs owner action before public release.
+
+For deployment prerequisites, see [workload limits](workload-limits.md),
+[controlled approvals](controlled-approvals.md), and
+[supported environments](supported-environments.md).

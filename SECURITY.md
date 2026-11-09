@@ -16,10 +16,12 @@ A useful private report identifies the affected version, adapter, reproducible s
 - Database credentials should be scoped to required tables and kept outside plans, committed configuration, and shared logs.
 - Custom assertions use a restricted scalar SQL form and bounded relation. SQL parsing is only one layer; use read-only database permissions for verification whenever practical.
 - Maintenance windows are an operational requirement. Advisory locks do not stop unrelated writers. Source fingerprints and Delta version checks detect relevant drift; they do not create a universal distributed transaction.
-- Migration metadata may expose table, field, dependency, and operator names. Review ledger/plan exports before sharing them even though source values are not persisted.
+- Migration metadata may expose table, field, dependency, and operator names. Review ledger/plan exports before sharing them even though evidence omits source rows. The verifier can spill source values to anonymous local scratch files; use private encrypted scratch.
 
 Destructive cleanup, arbitrary SQL migrations, automatic consumer cutover, and remote Delta storage are not implemented. Unsupported operations should fail before writes. Report any route around these limits as a safety defect.
 
 ## Dependency and workflow hygiene
 
 Dependencies are version-bounded and optional engine SDKs are extras. GitHub Actions are pinned to reviewed commit IDs and Dependabot can propose updates. Publishing requires an explicit manual workflow and repository-controlled environments. The project never requests cloud credentials simply to run contract analysis or local tests.
+
+See [controlled approvals and evidence](docs/controlled-approvals.md) for the deployment boundary, recovery procedures, and outstanding independent review.

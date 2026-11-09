@@ -60,7 +60,8 @@ No general arbitrary SQL execution command is exposed to the CLI.
 `capture_baseline(adapter, plan) -> dict`: schema, row counts and source-row
 multiset SHA256 per partition, capped fetches (row cap + 1). Fingerprint includes
 all original columns, excludes new targets; deterministic ordered canonical
-serialization, never persists row values. Fail on any cap exceeded, unknown
+serialization. Evidence does not store row values; the bounded sort can spill
+source values to private temporary files. Fail on any cap exceeded, unknown
 schema, or unexpected pre-existing target at initial admission.
 
 `verify(adapter, plan, baseline) -> dict`: `passed: bool`, `checks: list[dict]`

@@ -13,6 +13,7 @@ from .ledger import Ledger
 from .models import Plan, normalize_type
 from .planning import validate_plan
 from .verification import (
+    baseline_matches,
     capture_baseline,
     capture_source_partition,
     verify,
@@ -87,7 +88,7 @@ class Engine:
 
     def _source_unchanged(self, plan: Plan, run: dict) -> None:
         observed = capture_baseline(self.adapter, plan)
-        if observed != run["baseline"]:
+        if not baseline_matches(observed, run["baseline"]):
             raise SourceDriftError(
                 "Source drift detected; the approved baseline cannot be replaced. Investigate and replan."
             )
