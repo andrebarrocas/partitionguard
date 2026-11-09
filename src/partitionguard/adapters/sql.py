@@ -10,6 +10,7 @@ from pathlib import Path
 from threading import Lock
 
 from partitionguard.models import digest, normalize_type
+from partitionguard.workload import read_rows
 
 
 def quote(identifier: str) -> str:
@@ -31,7 +32,7 @@ class SQLAdapter:
         canonical = normalize_type(value)
         return {"STRING": "TEXT", "DOUBLE": "DOUBLE PRECISION"}.get(canonical, canonical)
 
-    def fetch(self, sql: str, parameters=()) -> list[tuple]:
+    def _validate_select(self, sql):
         # Internal read interface, not a user-query sandbox. Custom assertions
         # have a separate, substantially narrower AST validation boundary.
         import sqlglot
@@ -45,7 +46,16 @@ class SQLAdapter:
             for node in statements[0].walk()
         ):
             raise ValueError("Mutating SELECT expressions are forbidden")
+
+    def fetch(self, sql: str, parameters=()) -> list[tuple]:
+        self._validate_select(sql)
         return self._connection.execute(sql, parameters).fetchall()
+
+    def iter_rows(self, sql, parameters=()):
+        self._validate_select(sql)
+        result = self._connection.execute(sql, parameters)
+        while batch := result.fetchmany(32):
+            yield from batch
 
     def execute(self, sql: str, parameters=()):
         if self.read_only:
@@ -110,22 +120,22 @@ class SQLAdapter:
         day = date.fromisoformat(partition)
         next_day = day + timedelta(days=1)
         scope = f"{quote(bounds.column)} >= {self.placeholder} AND {quote(bounds.column)} < {self.placeholder}"
-        rows = self.fetch(
-            f"SELECT {quote(operation.source)} FROM {quote(table)} WHERE {scope} LIMIT {bounds.max_rows_per_partition + 1}",
-            (day, next_day),
-        )
-        if len(rows) > bounds.max_rows_per_partition:
-            raise ValueError("Partition exceeds the approved row cap")
-        if self.schema(table)[operation.source] == "STRING" and operation.data_type in (
+        strict = self.schema(table)[operation.source] == "STRING" and operation.data_type in (
             "INTEGER",
             "BIGINT",
-        ):
-            if any(
-                value is not None and not re.fullmatch(r"[+-]?[0-9]+", value) for (value,) in rows
-            ):
-                raise ValueError(
-                    "Integer conversion requires signed ASCII digits without whitespace"
-                )
+        )
+        with read_rows(
+            self,
+            f"SELECT {quote(operation.source)} FROM {quote(table)} WHERE {scope} LIMIT {bounds.max_rows_per_partition + 1}",
+            (day, next_day),
+        ) as rows:
+            for count, (value,) in enumerate(rows, 1):
+                if count > bounds.max_rows_per_partition:
+                    raise ValueError("Partition exceeds the approved row cap")
+                if strict and value is not None and not re.fullmatch(r"[+-]?[0-9]+", value):
+                    raise ValueError(
+                        "Integer conversion requires signed ASCII digits without whitespace"
+                    )
         source = quote(operation.source)
         if operation.transform == "cast":
             source = f"CAST({source} AS {self.sql_type(operation.data_type)})"
@@ -203,6 +213,11 @@ class PostgresAdapter(SQLAdapter):
     name = "postgres"
     dialect = "postgres"
     placeholder = "%s"
+
+    def iter_rows(self, sql, parameters=()):
+        self._validate_select(sql)
+        with self._connection.cursor() as cursor:
+            yield from cursor.stream(sql, parameters)
 
     def configure_timeouts(self, statement_seconds=None, lock_seconds=None):
         for setting, seconds in (

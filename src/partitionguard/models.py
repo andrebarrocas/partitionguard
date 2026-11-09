@@ -191,8 +191,8 @@ class Bounds(Model):
     start: date
     end: date
     max_partitions: int = Field(default=366, ge=1, le=10000, strict=True)
-    max_rows_per_partition: int = Field(default=1_000_000, ge=1, strict=True)
-    max_total_rows: int = Field(default=10_000_000, ge=1, strict=True)
+    max_rows_per_partition: int = Field(default=100_000, ge=1, strict=True)
+    max_total_rows: int = Field(default=1_000_000, ge=1, strict=True)
 
     _column = field_validator("column")(identifier)
 

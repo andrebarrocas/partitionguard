@@ -170,7 +170,7 @@ class DeltaAdapter:
             f"CREATE OR REPLACE VIEW {_quote(self._logical_table)} AS SELECT * FROM {_quote(_SOURCE)}"
         )
 
-    def fetch(self, sql: str, parameters=()) -> list[tuple]:
+    def _select(self, sql, parameters):
         self._assert_latest()
         if self._bounds is None:
             raise ValueError("Configure bounded Delta scope before reading data")
@@ -183,9 +183,18 @@ class DeltaAdapter:
             or not re.match(r"\s*(SELECT|WITH)\b", sql, re.IGNORECASE)
         ):
             raise ValueError("Delta fetch accepts a single read-only SELECT statement")
-        result = self._connection.execute(sql, parameters).fetchall()
+        return self._connection.execute(sql, parameters)
+
+    def fetch(self, sql: str, parameters=()) -> list[tuple]:
+        result = self._select(sql, parameters).fetchall()
         self._assert_latest()
         return result
+
+    def iter_rows(self, sql, parameters=()):
+        result = self._select(sql, parameters)
+        while batch := result.fetchmany(32):
+            yield from batch
+        self._assert_latest()
 
     def execute(self, sql: str, parameters=()) -> None:
         if self.read_only:
@@ -336,11 +345,11 @@ class DeltaAdapter:
         if columns[operation.target] != expected:
             raise ValueError("Delta target type differs from the approved operation")
         rows = self.fetch(
-            f"SELECT 1 FROM {_quote(table)} WHERE {_quote(bounds.column)} = ? "
-            f"LIMIT {bounds.max_rows_per_partition + 1}",
+            f"SELECT COUNT(*) FROM (SELECT 1 FROM {_quote(table)} WHERE {_quote(bounds.column)} = ? "
+            f"LIMIT {bounds.max_rows_per_partition + 1}) AS bounded",
             (partition,),
         )
-        if len(rows) > bounds.max_rows_per_partition:
+        if rows[0][0] > bounds.max_rows_per_partition:
             raise ValueError("Partition exceeds the approved row cap")
         if columns[operation.source] == "STRING" and expected in {"INTEGER", "BIGINT"}:
             invalid = self.fetch(

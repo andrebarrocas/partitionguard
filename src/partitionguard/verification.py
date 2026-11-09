@@ -1,15 +1,15 @@
-"""Deterministic, bounded migration evidence; no row data is persisted."""
+"""Deterministic, bounded migration evidence; no row data is stored in evidence."""
 
 from __future__ import annotations
 
 import re
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
-from hashlib import sha256
 from importlib.metadata import version
 
 from partitionguard.adapters.sql import quote
 from partitionguard.models import canonical_json, normalize_type
+from partitionguard.workload import read_rows, sorted_fingerprint
 
 
 def _migration(plan):
@@ -56,12 +56,11 @@ def _cell(value):
 
 
 def _fingerprint(rows):
-    encoded = sorted(canonical_json([_cell(cell) for cell in row]).encode() for row in rows)
-    hasher = sha256()
-    for item in encoded:
-        hasher.update(len(item).to_bytes(8, "big"))
-        hasher.update(item)
-    return hasher.hexdigest()
+    return sorted_fingerprint(_encoded(row) for row in rows)[1]
+
+
+def _encoded(row):
+    return canonical_json([_cell(cell) for cell in row]).encode()
 
 
 def capture_source_partition(adapter, plan, partition):
@@ -69,16 +68,23 @@ def capture_source_partition(adapter, plan, partition):
     bounds = _migration(plan).bounds
     columns = ", ".join(quote(name) for name in sorted(plan.current.column_map))
     scope, params = _scope(adapter, plan, partition)
-    rows = adapter.fetch(
+
+    def encoded(rows):
+        for count, row in enumerate(rows, 1):
+            if count > bounds.max_rows_per_partition:
+                raise ValueError(f"Partition {partition} exceeds its row cap")
+            yield _encoded(row)
+
+    with read_rows(
+        adapter,
         f"SELECT {columns} FROM {quote(plan.current.table)} WHERE {scope} "
         f"LIMIT {bounds.max_rows_per_partition + 1}",
         params,
-    )
-    if len(rows) > bounds.max_rows_per_partition:
-        raise ValueError(f"Partition {partition} exceeds its row cap")
-    if plan.migration.require_nonempty and not rows:
+    ) as rows:
+        count, fingerprint = sorted_fingerprint(encoded(rows))
+    if plan.migration.require_nonempty and not count:
         raise ValueError(f"Required partition {partition} is empty")
-    return {"row_count": len(rows), "fingerprint": _fingerprint(rows)}
+    return {"row_count": count, "fingerprint": fingerprint}
 
 
 def capture_baseline(adapter, plan):
@@ -190,23 +196,24 @@ def verify_conversion(adapter, plan):
             name = f"conversion:{operation.source}->{operation.target}"
             try:
                 scope, params = _scope(adapter, plan, partition)
-                rows = adapter.fetch(
+                count = 0
+                strict_values = True
+                strict = source_type == "STRING" and target_type in ("INTEGER", "BIGINT")
+                with read_rows(
+                    adapter,
                     f"SELECT {quote(operation.source)}, {_expression(adapter, operation)} FROM {quote(plan.current.table)} "
                     f"WHERE {scope} LIMIT {migration.bounds.max_rows_per_partition + 1}",
                     params,
-                )
-                within_cap = len(rows) <= migration.bounds.max_rows_per_partition
-                strict_values = not (
-                    source_type == "STRING" and target_type in ("INTEGER", "BIGINT")
-                ) or all(
-                    value is None or re.fullmatch(r"[+-]?[0-9]+", value) is not None
-                    for value, _ in rows
-                )
+                ) as rows:
+                    for count, (value, _) in enumerate(rows, 1):
+                        if strict and value is not None and not re.fullmatch(r"[+-]?[0-9]+", value):
+                            strict_values = False
+                within_cap = count <= migration.bounds.max_rows_per_partition
                 checks.append(
                     _check(
                         name,
                         within_cap and strict_values,
-                        {"evaluated_rows": len(rows), "strict_values": strict_values},
+                        {"evaluated_rows": count, "strict_values": strict_values},
                         "strict lossless conversion within row cap",
                         partition,
                     )
