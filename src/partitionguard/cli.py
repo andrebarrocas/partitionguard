@@ -14,6 +14,7 @@ from rich.console import Console
 from rich.table import Table
 
 from . import __version__
+from .approval import ApprovalError, ApprovalPolicy, receipt_for
 from .contracts import load_contract, load_migration
 from .models import canonical_json
 from .planning import diff as schema_diff
@@ -42,14 +43,18 @@ def guarded(fn):
                 5
                 if isinstance(exc, VerificationFailed)
                 else 6
-                if isinstance(exc, EngineError)
+                if isinstance(exc, (ApprovalError, EngineError))
                 else 2
                 if isinstance(exc, (ValueError, FileNotFoundError))
                 else 4
             )
             message = (
                 str(exc)
-                if isinstance(exc, (ValueError, EngineError, FileNotFoundError))
+                if isinstance(exc, (ApprovalError, EngineError))
+                or (
+                    not os.environ.get("PARTITIONGUARD_TRUST_FILE")
+                    and isinstance(exc, (ValueError, FileNotFoundError))
+                )
                 else f"{type(exc).__name__}: operation failed; inspect local database diagnostics"
             )
             typer.echo(
@@ -288,10 +293,13 @@ def engine_context(plan_file, connection, ledger, read_only):
     from contextlib import ExitStack
 
     from .adapters import open_adapter
-    from .engine import Engine
+    from .engine import Engine, EngineError
     from .ledger import Ledger
 
     p = load_plan(plan_file)
+    policy = ApprovalPolicy.from_environment()
+    if policy and connection is not None:
+        raise ApprovalError("Controlled execution uses the runner-provided connection setting")
     connection = connection or os.environ.get("PARTITIONGUARD_CONNECTION")
     if not connection:
         raise ValueError(
@@ -299,12 +307,52 @@ def engine_context(plan_file, connection, ledger, read_only):
         )
     stack = ExitStack()
     try:
-        adapter = stack.enter_context(open_adapter(p.adapter, connection, read_only=read_only))
-        journal = stack.enter_context(Ledger(ledger))
-        return stack, p, Engine(adapter, journal)
+        try:
+            adapter = stack.enter_context(open_adapter(p.adapter, connection, read_only=read_only))
+        except Exception:
+            raise EngineError("Could not open the configured database target") from None
+        journal = stack.enter_context(Ledger(ledger, secure=policy is not None))
+        return stack, p, Engine(adapter, journal, policy)
     except BaseException:
         stack.close()
         raise
+
+
+@app.command("approval-receipt")
+@guarded
+def approval_receipt(
+    plan_file: Path,
+    operator: Annotated[str, typer.Option()],
+    ledger: Path = Path(".partitionguard/ledger.sqlite"),
+    continuation: bool = False,
+):
+    """Print the exact canonical bytes the reviewer must sign."""
+    from .ledger import Ledger
+
+    policy = ApprovalPolicy.from_environment()
+    if not policy or not ledger.is_file():
+        raise ApprovalError("A prepared controlled ledger and trust policy are required")
+    with Ledger(ledger, secure=True) as journal:
+        run = journal.get(load_plan(plan_file).id)
+        if not run or run["approval_policy"] != policy.identity:
+            raise ApprovalError("Prepared run and controller approval policies do not match")
+        typer.echo(canonical_json(receipt_for(run, operator, continuation)))
+
+
+@app.command("ledger-backup")
+@guarded
+def ledger_backup(
+    ledger: Annotated[Path, typer.Option()],
+    output_file: Annotated[Path, typer.Option("--output")],
+):
+    """Create a checked SQLite snapshot in a private directory."""
+    from .ledger import Ledger
+
+    if not ledger.is_file() or output_file.exists():
+        raise ValueError("Backup requires an existing source and a new destination")
+    with Ledger(ledger, secure=bool(os.environ.get("PARTITIONGUARD_TRUST_FILE"))) as journal:
+        journal.backup(output_file)
+    output({"status": "BACKED_UP"}, True)
 
 
 @app.command()
@@ -316,11 +364,12 @@ def approve(
     connection: str | None = None,
     ledger: Path = Path(".partitionguard/ledger.sqlite"),
     json_output: Annotated[bool, typer.Option("--json")] = False,
+    signature: Path | None = None,
 ):
     """Approve the full digest for a prepared target. Writes only the ledger."""
     stack, p, engine = engine_context(plan_file, connection, ledger, True)
     with stack:
-        result = engine.approve(p, digest, operator)
+        result = engine.approve(p, digest, operator, signature)
         output(
             {
                 "plan_id": p.id,
@@ -389,11 +438,12 @@ def approve_continuation(
     connection: str | None = None,
     ledger: Path = Path(".partitionguard/ledger.sqlite"),
     json_output: Annotated[bool, typer.Option("--json")] = False,
+    signature: Path | None = None,
 ):
     """Recheck a paused canary and approve continuation; does not execute writes."""
     stack, p, engine = engine_context(plan_file, connection, ledger, True)
     with stack:
-        result = engine.approve_continuation(p, digest, operator)
+        result = engine.approve_continuation(p, digest, operator, signature)
         output(
             {"plan_id": p.id, "status": result["status"], "control": result["control"]}, json_output
         )
@@ -445,7 +495,7 @@ def status(
 
     if not ledger.exists():
         raise ValueError("Ledger does not exist")
-    with Ledger(ledger) as journal:
+    with Ledger(ledger, secure=bool(os.environ.get("PARTITIONGUARD_TRUST_FILE"))) as journal:
         result = journal.get(load_plan(plan_file).id)
         if result is None:
             raise ValueError("No prepared run for this plan")
@@ -464,7 +514,7 @@ def history(
 
     if not ledger.exists():
         raise ValueError("Ledger does not exist")
-    with Ledger(ledger) as journal:
+    with Ledger(ledger, secure=bool(os.environ.get("PARTITIONGUARD_TRUST_FILE"))) as journal:
         output(
             journal.events(load_plan(plan_file).id) if plan_file else journal.history(), json_output
         )
@@ -489,7 +539,7 @@ def report(
     if destination.exists():
         raise ValueError("Report output already exists; choose a new path")
     p = load_plan(plan_file)
-    with Ledger(ledger) as journal:
+    with Ledger(ledger, secure=bool(os.environ.get("PARTITIONGUARD_TRUST_FILE"))) as journal:
         evidence = build_report(p, journal)
     content = render_html(evidence) if format == "html" else canonical_json(evidence) + "\n"
     # Exclusive creation also protects plan/ledger files and concurrent exporters.

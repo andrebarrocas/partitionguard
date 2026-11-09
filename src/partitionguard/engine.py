@@ -7,6 +7,7 @@ from contextlib import nullcontext
 from datetime import timedelta
 from typing import Any
 
+from .approval import ApprovalError, receipt_for
 from .controls import PauseRequest
 from .ledger import Ledger
 from .models import Plan, normalize_type
@@ -37,9 +38,10 @@ class InjectedFailure(EngineError):
 
 
 class Engine:
-    def __init__(self, adapter: Any, ledger: Ledger):
+    def __init__(self, adapter: Any, ledger: Ledger, approval_policy=None):
         self.adapter = adapter
         self.ledger = ledger
+        self.approval_policy = approval_policy
 
     def _adapter_evidence(self) -> dict:
         provider = getattr(self.adapter, "evidence", None)
@@ -78,6 +80,9 @@ class Engine:
             raise EngineError("Saved plan content does not match")
         if run["target_identity"] != self.adapter.identity:
             raise EngineError("Connection target does not match the prepared target")
+        trust = self.approval_policy.identity if self.approval_policy else None
+        if run["approval_policy"] != trust:
+            raise ApprovalError("Prepared run and controller approval policies do not match")
         return run
 
     def _source_unchanged(self, plan: Plan, run: dict) -> None:
@@ -138,7 +143,11 @@ class Engine:
                     "Dry-run conversion preflight failed: " + str(conversion.get("checks", []))
                 )
             run = self.ledger.prepare(
-                plan.id, plan.model_dump(mode="json"), baseline, self.adapter.identity
+                plan.id,
+                plan.model_dump(mode="json"),
+                baseline,
+                self.adapter.identity,
+                approval_policy=self.approval_policy.identity if self.approval_policy else None,
             )
             self.ledger.record_event(
                 plan.id,
@@ -151,12 +160,22 @@ class Engine:
             )
             return run
 
-    def approve(self, plan: Plan, digest: str, operator: str) -> dict:
+    def approve(self, plan: Plan, digest: str, operator: str, signature=None) -> dict:
         self._validate(plan)
         if digest != plan.id:
             raise EngineError("Approval must match the full immutable plan digest")
-        self._run(plan)
-        return self.ledger.approve(plan.id, operator)
+        run = self._run(plan)
+        authorization = self._authorize(run, operator, signature)
+        return self.ledger.approve(plan.id, operator, authorization=authorization)
+
+    def _authorize(self, run, operator, signature, continuation=False):
+        if self.approval_policy:
+            return self.approval_policy.verify(
+                receipt_for(run, operator, continuation), operator, signature
+            )
+        if signature is not None:
+            raise ApprovalError("Signatures require a controlled approval policy")
+        return None
 
     def _verify_canary(self, plan: Plan, run: dict) -> dict:
         count = plan.migration.execution.canary_partitions
@@ -179,13 +198,14 @@ class Engine:
         }
         return {**verify(self.adapter, scoped, baseline), "scope": "canary"}
 
-    def approve_continuation(self, plan: Plan, digest: str, operator: str) -> dict:
+    def approve_continuation(self, plan: Plan, digest: str, operator: str, signature=None) -> dict:
         self._validate(plan)
         if digest != plan.id or not operator.strip():
             raise EngineError("Continuation approval requires the full plan digest and operator")
         run = self._run(plan)
         if run["status"] != "CANARY_PAUSED":
             raise EngineError("Continuation approval requires a verified canary pause")
+        authorization = self._authorize(run, operator, signature, continuation=True)
         self._source_unchanged(plan, run)
         result = self._verify_canary(plan, run)
         if result.get("passed") is not True:
@@ -200,7 +220,11 @@ class Engine:
                 "Canary verification failed; investigate and explicitly resume to reconcile it"
             )
         return self.ledger.transition(
-            plan.id, "CONTINUATION_APPROVED", operator=operator, verification=result
+            plan.id,
+            "CONTINUATION_APPROVED",
+            operator=operator,
+            verification=result,
+            authorization=authorization,
         )
 
     def apply(

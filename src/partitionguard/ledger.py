@@ -9,7 +9,10 @@ from __future__ import annotations
 import fcntl
 import hashlib
 import json
+import os
 import sqlite3
+import stat
+import tempfile
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -47,11 +50,44 @@ def _control(events):
     return {"canary_review_hash": review, "continuation_approved": approved, "last_pause": pause}
 
 
+def private_directory(path: Path):
+    path.mkdir(mode=0o700, parents=True, exist_ok=True)
+    info = path.stat()
+    if info.st_uid != os.geteuid() or info.st_mode & 0o077:
+        raise LedgerError("Controlled ledger directory must be runner-owned and private (0700)")
+
+
+def private_file(path: Path, create=False):
+    try:
+        info = path.lstat()
+    except FileNotFoundError:
+        if create:
+            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            os.close(fd)
+        return
+    if (
+        not stat.S_ISREG(info.st_mode)
+        or info.st_uid != os.geteuid()
+        or info.st_mode & 0o077
+        or info.st_nlink != 1
+    ):
+        raise LedgerError(
+            "Controlled ledger files must be runner-owned regular files with mode 0600"
+        )
+
+
 class Ledger:
     """One recoverable run per immutable plan, with append-only attempt evidence."""
 
-    def __init__(self, path: str | Path):
-        self.path = Path(path).expanduser().resolve()
+    def __init__(self, path: str | Path, *, secure=False):
+        raw = Path(path).expanduser()
+        if secure and raw.is_symlink():
+            raise LedgerError("Controlled ledgers cannot use symbolic links")
+        self.path = raw.resolve()
+        if secure:
+            private_directory(self.path.parent)
+            for suffix in ("", ".lock", "-wal", "-shm", "-journal"):
+                private_file(Path(str(self.path) + suffix), create=suffix in ("", ".lock"))
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._lock_file = self.path.with_suffix(self.path.suffix + ".lock").open("a+b")
         try:
@@ -185,6 +221,17 @@ class Ledger:
                 raise LedgerIntegrityError("Execution event run identity is inconsistent")
             if "status" in event["detail"]:
                 status = event["detail"]["status"]
+            if prepared.get("approval_policy") and (
+                event["kind"] == "APPROVED"
+                or (event["kind"] == "STATE" and status == "CONTINUATION_APPROVED")
+            ):
+                auth = event["detail"].get("authorization", {})
+                if auth.get("trust_sha256") != prepared["approval_policy"] or auth.get(
+                    "principal"
+                ) != event["detail"].get("operator"):
+                    raise LedgerIntegrityError(
+                        "Controlled approval evidence is missing or inconsistent"
+                    )
             if event["kind"] == "APPROVED":
                 approved_digest = event["detail"]["approved_digest"]
                 operator = event["detail"]["operator"]
@@ -269,7 +316,9 @@ class Ledger:
         for field in ("plan", "baseline", "verification"):
             value[field] = json.loads(value[field]) if value[field] is not None else None
         value["migration_id"] = plan_id
-        value["control"] = _control(self.events(plan_id))
+        events = self.events(plan_id)
+        value["control"] = _control(events)
+        value["approval_policy"] = events[0]["detail"].get("approval_policy")
         value["checkpoints"] = {
             item["action_id"]: {
                 "detail": json.loads(item["detail"]),
@@ -288,7 +337,36 @@ class Ledger:
         ).fetchall()
         return [self.get(row["plan_id"]) for row in ids]
 
-    def prepare(self, plan_id: str, plan: dict, baseline: dict, target_identity: str) -> dict:
+    def backup(self, destination: Path):
+        """Copy a verified snapshot, never replace an existing ledger."""
+        destination = destination.expanduser()
+        private_directory(destination.parent.resolve())
+        if self.connection.execute("PRAGMA quick_check").fetchone()[0] != "ok":
+            raise LedgerIntegrityError("SQLite integrity check failed")
+        self.history()
+        fd, name = tempfile.mkstemp(dir=destination.parent)
+        os.close(fd)
+        try:
+            target = sqlite3.connect(name)
+            try:
+                self.connection.backup(target)
+            finally:
+                target.close()
+            with open(name, "rb") as snapshot:
+                os.fsync(snapshot.fileno())
+            os.link(name, destination)
+        finally:
+            Path(name).unlink()
+
+    def prepare(
+        self,
+        plan_id: str,
+        plan: dict,
+        baseline: dict,
+        target_identity: str,
+        *,
+        approval_policy=None,
+    ) -> dict:
         existing = self.get(plan_id)
         if existing:
             if any(
@@ -297,6 +375,7 @@ class Ledger:
                     ("plan", plan),
                     ("baseline", baseline),
                     ("target_identity", target_identity),
+                    ("approval_policy", approval_policy),
                 )
             ):
                 raise LedgerError("An existing approved baseline or target cannot be replaced")
@@ -324,6 +403,7 @@ class Ledger:
                     "plan": plan,
                     "baseline": baseline,
                     "target_identity": target_identity,
+                    **({"approval_policy": approval_policy} if approval_policy else {}),
                     "created_at": timestamp,
                     "updated_at": timestamp,
                     "started_at": None,
@@ -333,12 +413,16 @@ class Ledger:
             )
         return self.get(plan_id)
 
-    def approve(self, plan_id: str, operator: str) -> dict:
+    def approve(self, plan_id: str, operator: str, *, authorization=None) -> dict:
         run = self.get(plan_id)
         if not run or run["status"] not in {"PREPARED", "APPROVED"}:
             raise LedgerError("Only a prepared plan can be approved")
         if not operator.strip():
             raise LedgerError("An explicit operator identity is required")
+        if run["approval_policy"] and (
+            not authorization or authorization.get("trust_sha256") != run["approval_policy"]
+        ):
+            raise LedgerError("Controlled run requires authenticated approval evidence")
         timestamp = _now()
         with self.connection:
             self.connection.execute(
@@ -352,6 +436,7 @@ class Ledger:
                     "status": "APPROVED",
                     "operator": operator,
                     "approved_digest": plan_id,
+                    **({"authorization": authorization} if authorization else {}),
                     "created_at": run["created_at"],
                     "updated_at": timestamp,
                     "started_at": run["started_at"],
@@ -369,6 +454,7 @@ class Ledger:
         operator: str | None = None,
         error: str | None = None,
         verification: dict | None = None,
+        authorization: dict | None = None,
     ) -> dict:
         run = self.get(plan_id)
         if not run:
@@ -413,6 +499,12 @@ class Ledger:
                 )
         if status == "CONTINUATION_APPROVED" and (not operator or not operator.strip()):
             raise LedgerError("Continuation requires an explicit approving operator")
+        if (
+            status == "CONTINUATION_APPROVED"
+            and run["approval_policy"]
+            and (not authorization or authorization.get("trust_sha256") != run["approval_policy"])
+        ):
+            raise LedgerError("Controlled run requires authenticated continuation evidence")
         timestamp = _now()
         attempts = run["attempts"] + (1 if status == "RUNNING" else 0)
         started = run["started_at"] or (timestamp if status == "RUNNING" else None)
@@ -446,6 +538,7 @@ class Ledger:
                     "updated_at": timestamp,
                     "started_at": started,
                     "finished_at": finished,
+                    **({"authorization": authorization} if authorization else {}),
                     **(
                         {"review_hash": run["control"]["canary_review_hash"]}
                         if status == "CONTINUATION_APPROVED"

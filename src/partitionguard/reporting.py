@@ -11,7 +11,7 @@ from .planning import validate_plan
 
 LIMITATIONS = [
     "Snapshot of recorded evidence; exporting does not reverify the live dataset.",
-    "Local ledger integrity was checked, but identities are self-reported and evidence is not signed.",
+    "Local ledger integrity was checked. Approvals are self-reported unless SSH authentication is recorded. This export is not signed.",
     "Additive migration stage only; consumer cutover and legacy retirement are not certified.",
     "Connection identity, source values, fingerprints, SQL, check observations and raw errors are omitted.",
     "Product, column, dependency and operator names remain visible; review before sharing.",
@@ -71,6 +71,13 @@ def build_report(plan: Plan, ledger: Ledger) -> dict:
                 if key in detail
             },
         }
+        auth = detail.get("authorization")
+        if isinstance(auth, dict):
+            item["approval_authentication"] = {
+                key: auth[key]
+                for key in ("principal", "receipt_sha256", "signature_sha256", "trust_sha256")
+                if key in auth
+            }
         result = (
             detail.get("result") if event["kind"] == "VERIFICATION" else detail.get("verification")
         )
